@@ -271,6 +271,13 @@
       "prTitle": "Create pull request",
       "titleLabel": "Title"
     },
+    "draft": {
+      "empty": "An English suggestion is prepared after turns that change the commit diff. You can also write your own message.",
+      "failed": "Couldn't generate a suggestion. Enter a commit message manually.",
+      "generating": "Preparing an English suggestion… You can write your own message without waiting.",
+      "stale": "The changes have changed since this message was prepared. Review the message before committing.",
+      "tooLarge": "The diff is too large for automatic message generation. Enter a commit message manually."
+    },
     "errors": {
       "branchRequired": "A named branch is required to create a pull request.",
       "commitBeforePr": "Commit changes before creating a pull request.",
@@ -288,8 +295,8 @@
       "prCreatedWithUrl": "Pull request created: {{url}}",
       "pushedCommits_one": "Pushed {{count}} commit.",
       "pushedCommits_other": "Pushed {{count}} commits.",
-      "pushedWithLocalChanges_one": "Branch pushed. {{count}} local file still has uncommitted changes; Push does not include or remove them.",
-      "pushedWithLocalChanges_other": "Branch pushed. {{count}} local files still have uncommitted changes; Push does not include or remove them."
+      "pushedWithLocalChanges_one": "Push complete. {{count}} file with uncommitted changes.",
+      "pushedWithLocalChanges_other": "Push complete. {{count}} files with uncommitted changes."
     },
     "prButtonLabel": "PR",
     "prButtonTitle": "Create a pull request with GitHub CLI",

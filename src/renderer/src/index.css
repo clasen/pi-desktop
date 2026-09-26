@@ -58,6 +58,7 @@
   --color-info-bg: rgba(30, 58, 138, 0.3);
   --color-special: #c084fc;
   --color-special-bg: rgba(88, 28, 135, 0.3);
+  --color-sidebar: var(--color-app);
   --color-chat-column: var(--color-app);
   --color-chat-column-border: var(--color-border);
   --color-scrollbar: #2a2a2a;

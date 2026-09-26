@@ -1318,11 +1318,11 @@ function SettingsRow({
   }
   return (
     <div className="flex items-center justify-between gap-4">
-      <div>
+      <div className="min-w-0 flex-1">
         <div className="text-sm text-primary">{label}</div>
         <div className="text-xs text-dim">{description}</div>
       </div>
-      <div className="w-64">{children}</div>
+      <div className="w-64 max-w-[50%] shrink-0">{children}</div>
     </div>
   )
 }
@@ -1428,13 +1428,13 @@ function Toggle({
   return (
     <button
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 align-middle transition-colors ${
         checked ? 'bg-accent' : 'bg-elevated'
       }`}
     >
       <span
-        className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
-          checked ? 'translate-x-4' : 'translate-x-1'
+        className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
+          checked ? 'translate-x-4' : 'translate-x-0'
         }`}
       />
     </button>

@@ -4,6 +4,13 @@ import { DEFAULT_SIDEBAR_WIDTH } from './sidebar-width'
 import { DEFAULT_CHAT_WIDTH } from './chat-width'
 import { SYSTEM_LANGUAGE } from './i18n/languages'
 
+export const GIT_COMMIT_MESSAGE_CONFIG = {
+  maxMessageLength: 200,
+  maxDiffBytes: 120_000,
+  maxOutputBytes: 1_000_000,
+  timeoutMs: 60_000,
+} as const
+
 export const GIT_CONVEYOR_NOTICE_TIMEOUT_MS = {
   success: 5_000,
   error: 10_000,

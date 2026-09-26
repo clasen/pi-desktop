@@ -25,11 +25,12 @@ import { usePiEvents, useMenuActions, useInitialize, useNotePickerShortcut } fro
 import { useFolderDrop } from './hooks/use-folder-drop'
 import { useAppStore } from './store'
 import { isSettingsShortcut } from './utils/settings-shortcut'
-import { useEffect } from 'react'
-import { ArrowUpCircle, FolderOpen, PanelLeft, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ArrowUpCircle, FolderOpen, Home, PanelLeft, X } from 'lucide-react'
 
 export function App(): React.JSX.Element {
   const { t } = useTranslation()
+  const [projectBar, setProjectBar] = useState<HTMLDivElement | null>(null)
   usePiEvents()
   useMenuActions()
   useInitialize()
@@ -106,8 +107,39 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="relative flex h-screen flex-col bg-app text-primary">
-      <div className="window-drag-region flex h-10 shrink-0 items-center justify-end px-3" style={{ paddingRight: 'max(0.75rem, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 0.75rem))' }}>
-        <div className="window-no-drag relative z-50">
+      <div
+        className="window-drag-region flex h-12 shrink-0 items-center gap-2 border-b border-border bg-sidebar px-3"
+        style={{
+          paddingLeft: window.piDesktop.system.platform === 'darwin' ? 84 : undefined,
+          paddingRight: 'max(0.75rem, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 0.75rem))'
+        }}
+      >
+        {showChrome && (
+          <div className="window-no-drag flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              className="rounded-md p-1.5 text-muted transition-colors hover:bg-surface-hover hover:text-primary"
+              title={sidebarOpen ? t('sidebar.header.closeSidebar') : t('common.showSidebar')}
+              aria-label={sidebarOpen ? t('sidebar.header.closeSidebar') : t('common.showSidebar')}
+              aria-expanded={sidebarOpen}
+            >
+              <PanelLeft size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={() => useAppStore.getState().setCurrentView('home')}
+              className="rounded-md p-1.5 text-muted transition-colors hover:bg-surface-hover hover:text-primary"
+              title={t('sidebar.header.homeTitle')}
+              aria-label={t('sidebar.header.homeAriaLabel')}
+            >
+              <Home size={16} />
+            </button>
+          </div>
+        )}
+        <div ref={setProjectBar} className="min-w-0 flex-1" />
+        <div className="h-full w-8 shrink-0" />
+        <div className="window-no-drag relative z-50 shrink-0 border-l border-border pl-2">
           <StatusPopover />
         </div>
       </div>
@@ -170,7 +202,7 @@ export function App(): React.JSX.Element {
         {sidebarOpen && showChrome && <Sidebar />}
 
         <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-          {showChrome && <WorkspaceTabs />}
+          {showChrome && projectBar && <WorkspaceTabs projectBar={projectBar} />}
           <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
             <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
               <div className={globalWorkflowOpen ? 'hidden' : 'contents'}>

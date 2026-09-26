@@ -1,10 +1,13 @@
-import { useMemo } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { AlertCircle, CheckCircle2, FolderOpen, GitBranch, Loader2, MessageSquarePlus, PanelLeft, Plus, Settings, X, XCircle } from 'lucide-react'
+import { AlertCircle, CheckCircle2, FolderOpen, GitBranch, Loader2, MessageSquarePlus, Plus, Settings, X, XCircle } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAppStore } from '../store'
 import { useGlobalWorkflowOpen } from '../hooks'
 import { getSessionTitle } from '../utils/session-title'
+import { projectTabShortcutIndex } from '../utils/project-tab-shortcut'
+import { sessionTabShortcutIndex } from '../utils/session-tab-shortcut'
 import { pathsEqual } from '../../../shared/path-compare'
 import { SessionRuntimeIndicator } from './session-runtime-indicator'
 import type { Workspace } from '../../../shared/ipc-contracts'
@@ -13,15 +16,13 @@ function tabLabel(workspace: Workspace): string {
   return workspace.name || workspace.path.split(/[\\/]/).filter(Boolean).pop() || workspace.path
 }
 
-export function WorkspaceTabs(): React.JSX.Element {
+export function WorkspaceTabs({ projectBar }: { projectBar: HTMLDivElement }): React.JSX.Element {
   const { t } = useTranslation()
   const workspaces = useAppStore((state) => state.workspaces)
   const activeWorkspace = useAppStore((state) => state.activeWorkspace)
   const sessionList = useAppStore((state) => state.sessionList)
   const sessionRuntimes = useAppStore((state) => state.sessionRuntimes)
   const activeSessionRuntimeId = useAppStore((state) => state.activeSessionRuntimeId)
-  const sidebarOpen = useAppStore((state) => state.sidebarOpen)
-  const toggleSidebar = useAppStore((state) => state.toggleSidebar)
   const workspaceActivity = useAppStore((state) => state.workspaceActivity)
   const currentView = useAppStore((state) => state.currentView)
   const globalWorkflowOpen = useGlobalWorkflowOpen()
@@ -50,20 +51,53 @@ export function WorkspaceTabs(): React.JSX.Element {
     [activeWorkspace?.id, sessionRuntimes]
   )
 
+  const selectProjectTab = useCallback((workspaceId: string) => {
+    setWorkflowPanelOpen(false)
+    if (workspaceId === activeWorkspace?.id) {
+      setCurrentView('chat')
+      return
+    }
+    void activateWorkspace(workspaceId).then((switched) => {
+      if (switched) setCurrentView('chat')
+    })
+  }, [activeWorkspace?.id, activateWorkspace, setCurrentView, setWorkflowPanelOpen])
+
+  const selectSessionTab = useCallback((sessionPath: string) => {
+    setCurrentView('chat')
+    void switchSession(sessionPath, activeWorkspace?.path)
+  }, [activeWorkspace?.path, setCurrentView, switchSession])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.defaultPrevented) return
+      const index = projectTabShortcutIndex(
+        event,
+        tabs.findIndex((workspace) => workspace.id === activeWorkspace?.id),
+        tabs.length
+      )
+      if (index !== null) {
+        event.preventDefault()
+        selectProjectTab(tabs[index].id)
+        return
+      }
+      const sessionIndex = sessionTabShortcutIndex(
+        event,
+        sessionTabs.findIndex((runtime) => runtime.runtimeId === activeSessionRuntimeId || runtime.active),
+        sessionTabs.length
+      )
+      if (sessionIndex === null) return
+      const sessionPath = sessionTabs[sessionIndex].sessionPath
+      if (!sessionPath) return
+      event.preventDefault()
+      selectSessionTab(sessionPath)
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [activeWorkspace?.id, activeSessionRuntimeId, tabs, sessionTabs, selectProjectTab, selectSessionTab])
+
   return (
     <div className="flex shrink-0 flex-col bg-app">
-    <div className="flex h-12 shrink-0 items-end gap-1 overflow-x-auto border-b border-border px-2 pt-1">
-      {!sidebarOpen && (
-        <button
-          type="button"
-          onClick={toggleSidebar}
-          className="mb-1 flex h-7 w-7 shrink-0 animate-fade-in items-center justify-center rounded-md border border-border-strong bg-surface text-muted shadow-sm transition-colors hover:bg-surface-hover hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus"
-          title={t('common.showSidebar')}
-          aria-label={t('common.showSidebar')}
-        >
-          <PanelLeft size={15} />
-        </button>
-      )}
+    {createPortal(<div className="flex h-12 items-center gap-1 overflow-x-auto px-1 [&>button]:[-webkit-app-region:no-drag]">
       {tabs.map((workspace) => {
         const active = workspace.id === activeWorkspace?.id && !toolsActive
         const activity = workspaceActivity[workspace.id]
@@ -84,7 +118,7 @@ export function WorkspaceTabs(): React.JSX.Element {
               void removeWorkspace(workspace.id)
             }}
             className={clsx(
-              'group flex h-9 min-w-[150px] max-w-[240px] shrink-0 items-center gap-2 rounded-t-md border border-b-0 px-[11px] text-xs transition-colors',
+              'window-no-drag group flex h-8 min-w-[100px] max-w-[200px] shrink-0 items-center gap-2 rounded-md border px-2.5 text-xs transition-colors',
               active
                 ? 'border-border bg-surface text-primary'
                 : 'border-transparent text-muted hover:bg-surface/60 hover:text-secondary'
@@ -92,26 +126,18 @@ export function WorkspaceTabs(): React.JSX.Element {
           >
             <button
               type="button"
-              onClick={() => {
-                setWorkflowPanelOpen(false)
-                if (workspace.id === activeWorkspace?.id) {
-                  setCurrentView('chat')
-                  return
-                }
-                void activateWorkspace(workspace.id).then((switched) => {
-                  if (switched) setCurrentView('chat')
-                })
-              }}
+              onClick={() => selectProjectTab(workspace.id)}
               className="flex min-w-0 flex-1 items-center gap-2 text-left"
               title={`${workspace.path}${workspace.branch ? `\n${workspace.branch}` : ''}`}
             >
-              {isWorktree ? (
+              {isWorking ? (
+                <Loader2 size={13} className="shrink-0 animate-spin text-accent-fg" />
+              ) : isWorktree ? (
                 <GitBranch size={13} className="shrink-0 text-special" />
               ) : (
                 <FolderOpen size={13} className="shrink-0 text-dim" />
               )}
               <span className="min-w-0 flex-1 truncate font-medium">{tabLabel(workspace)}</span>
-              {isWorking && <Loader2 size={12} className="shrink-0 animate-spin text-accent-fg" />}
               {needsApproval && <AlertCircle size={12} className="shrink-0 text-warning" />}
               {completed && <CheckCircle2 size={12} className="shrink-0 text-success" />}
               {failed && <XCircle size={12} className="shrink-0 text-error" />}
@@ -136,7 +162,7 @@ export function WorkspaceTabs(): React.JSX.Element {
       })}
 
       {toolsActive && (
-        <div className="group flex h-9 min-w-[140px] shrink-0 items-center rounded-t-md border border-b-0 border-border bg-surface text-primary">
+        <div className="window-no-drag group flex h-8 min-w-[120px] shrink-0 items-center rounded-md border border-border bg-surface text-primary">
           {/* The tab only exists while a tool surface is on screen, so its label
               always names what is already showing — a static marker, never a
               control that navigates somewhere the user did not ask for. Closing
@@ -171,7 +197,7 @@ export function WorkspaceTabs(): React.JSX.Element {
           setCurrentView('chat')
           void createNewSession()
         }}
-        className="mb-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-hover hover:text-primary transition-colors"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-hover hover:text-primary transition-colors"
         title={t('workspaceTabs.newSessionTitle')}
         aria-label={t('workspaceTabs.newSessionAriaLabel')}
       >
@@ -180,13 +206,13 @@ export function WorkspaceTabs(): React.JSX.Element {
       <button
         type="button"
         onClick={() => void createWorktreeTab()}
-        className="mb-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-hover hover:text-primary transition-colors"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-surface-hover hover:text-primary transition-colors"
         title={t('workspaceTabs.newIsolatedTabTitle')}
         aria-label={t('workspaceTabs.newIsolatedTabAriaLabel')}
       >
         <Plus size={15} />
       </button>
-    </div>
+    </div>, projectBar)}
     {sessionTabs.length > 0 && (
       <div className="flex h-8 shrink-0 items-center gap-1 overflow-x-auto border-b border-border/70 px-3">
         {sessionTabs.map((runtime) => {
@@ -209,8 +235,7 @@ export function WorkspaceTabs(): React.JSX.Element {
                 type="button"
                 onClick={() => {
                   if (!runtime.sessionPath) return
-                  setCurrentView('chat')
-                  void switchSession(runtime.sessionPath, activeWorkspace?.path)
+                  selectSessionTab(runtime.sessionPath)
                 }}
                 className="flex h-full min-w-0 flex-1 items-center gap-1.5 text-left"
                 title={runtime.sessionPath ?? undefined}

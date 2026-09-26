@@ -1,11 +1,14 @@
-import { ipcMain } from 'electron'
+import { app, ipcMain } from 'electron'
+import { realpath } from 'fs/promises'
 import { IPC_CHANNELS } from '../../shared/ipc-contracts'
 import type {
   GitConveyorCommitOptions,
   GitConveyorPullRequestOptions,
 } from '../../shared/ipc-contracts'
 import { assertTrustedSender, isObject, isOptionalBoolean, isOptionalString, isString } from './validation'
-import { commitAll, createPullRequest, getGitConveyorStatus, pushBranch } from '../git-conveyor'
+import { commitAll, createPullRequest, getGitConveyorStatus, pushBranch, readCommitDiff } from '../git-conveyor'
+import { CommitMessageService } from '../commit-message-service'
+import { wireCommitMessageTurns } from '../commit-message-wiring'
 import type { IpcContext } from './context'
 import { t } from '../../shared/i18n'
 
@@ -16,6 +19,19 @@ function activeCwd(ctx: IpcContext): string {
 }
 
 export function registerGitConveyorHandlers(ctx: IpcContext): void {
+  const messages = new CommitMessageService({
+    resolvePath: realpath,
+    readDiff: readCommitDiff,
+    changed: () => ctx.broadcast(IPC_CHANNELS.EVENT_GIT_COMMIT_MESSAGE, null),
+  })
+  wireCommitMessageTurns(ctx.workspaceManager, messages)
+  app.on('will-quit', () => messages.dispose())
+
+  ipcMain.handle(IPC_CHANNELS.GIT_COMMIT_MESSAGE, async (event) => {
+    assertTrustedSender(event)
+    return messages.get(activeCwd(ctx))
+  })
+
   ipcMain.handle(IPC_CHANNELS.GIT_CONVEYOR_STATUS, async (event) => {
     assertTrustedSender(event)
     return getGitConveyorStatus(activeCwd(ctx))

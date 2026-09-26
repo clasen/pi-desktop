@@ -1,4 +1,5 @@
 import { access, realpath } from 'fs/promises'
+import { createHash } from 'crypto'
 import { isAbsolute, relative, resolve, sep } from 'path'
 import { spawn } from 'child_process'
 import { inspectGitRepository, isMissingRepositoryError, runGit } from './git-worktree'
@@ -9,9 +10,9 @@ import type {
   GitConveyorStatus,
 } from '../shared/ipc-contracts'
 import { t } from '../shared/i18n'
+import { GIT_COMMIT_MESSAGE_CONFIG } from '../shared/default-settings'
 
 const COMMAND_TIMEOUT_MS = 30_000
-const MAX_COMMIT_MESSAGE_LENGTH = 200
 
 /** Status of a workspace folder that Git does not track. */
 const NOT_A_REPOSITORY_STATUS: GitConveyorStatus = Object.freeze({
@@ -181,6 +182,40 @@ async function stagedPaths(cwd: string): Promise<string[]> {
   return output.split('\0').filter(Boolean).map((path) => resolve(worktreeRoot, path))
 }
 
+async function commitSelection(cwd: string): Promise<{ autoStage: boolean; workspaceRoot: string }> {
+  const staged = await stagedPaths(cwd)
+  const workspaceRoot = await realpath(cwd)
+  if (staged.some((path) => !isPathWithin(workspaceRoot, path))) {
+    throw new Error(t('errors.git.stagedOutsideWorkspace'))
+  }
+  return { autoStage: staged.length === 0, workspaceRoot }
+}
+
+export interface CommitDiffSnapshot {
+  fingerprint: string
+  diff: string
+}
+
+/** Read exactly the selection commitAll would commit, without touching the index. */
+export async function readCommitDiff(cwd: string): Promise<CommitDiffSnapshot | null> {
+  const repository = await inspectGitRepository(cwd).catch((error: unknown) => {
+    if (isMissingRepositoryError(error)) return null
+    throw error
+  })
+  if (!repository?.branch) return null
+  const { autoStage, workspaceRoot } = await commitSelection(cwd)
+  const { stdout: diff } = await runGit([
+    'diff', ...(autoStage ? [] : ['--cached']),
+    '--binary', '--full-index', '--no-ext-diff', '--no-textconv', '--no-renames',
+    '--', '.',
+  ], workspaceRoot)
+  if (!diff) return null
+  const fingerprint = createHash('sha256')
+    .update(JSON.stringify([workspaceRoot, repository.head, repository.branch, diff]))
+    .digest('hex')
+  return { fingerprint, diff }
+}
+
 /**
  * True when tracked files below `cwd` differ from the index. `git add --update`
  * fails when its pathspec matches no tracked file at all, so auto-staging asks
@@ -234,8 +269,8 @@ export async function getGitConveyorStatus(cwd: string): Promise<GitConveyorStat
 export async function commitAll(cwd: string, options: GitConveyorCommitOptions): Promise<GitConveyorStatus> {
   const message = options.message.trim()
   if (!message) throw new Error(t('errors.git.commitMessageRequired'))
-  if (message.length > MAX_COMMIT_MESSAGE_LENGTH) {
-    throw new Error(t('errors.git.commitMessageTooLong', { max: MAX_COMMIT_MESSAGE_LENGTH }))
+  if (message.length > GIT_COMMIT_MESSAGE_CONFIG.maxMessageLength) {
+    throw new Error(t('errors.git.commitMessageTooLong', { max: GIT_COMMIT_MESSAGE_CONFIG.maxMessageLength }))
   }
   const repository = await inspectGitRepository(cwd)
   if (!repository.branch) throw new Error(t('errors.git.detachedHeadCommit'))
@@ -246,20 +281,12 @@ export async function commitAll(cwd: string, options: GitConveyorCommitOptions):
   // Preserve an intentionally curated index. Only auto-stage when there is no
   // staged content at all, and never allow staged paths outside the workspace
   // to be swept into a commit opened from a monorepo subdirectory.
-  const staged = await stagedPaths(cwd)
-  // Both sides of the comparison must be physical paths: a workspace can be
-  // opened through a symlink while Git always reports the resolved worktree.
-  const workspaceRoot = await realpath(cwd)
-  const outsideWorkspace = staged.filter((path) => !isPathWithin(workspaceRoot, path))
-  if (outsideWorkspace.length > 0) {
-    throw new Error(t('errors.git.stagedOutsideWorkspace'))
-  }
+  const { autoStage } = await commitSelection(cwd)
 
   // Auto-staging covers tracked modifications only. A stray secret, key, or
   // build artefact sitting untracked in the workspace reaches a commit only
   // after the user staged it deliberately. The Commit button counts untracked
   // rows too, so say plainly when that leaves nothing to commit.
-  const autoStage = staged.length === 0
   if (autoStage && !(await hasUnstagedTrackedChanges(cwd))) {
     throw new Error(t('errors.git.noTrackedChanges'))
   }

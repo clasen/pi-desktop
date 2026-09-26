@@ -3,13 +3,15 @@ import { AlertCircle, ExternalLink, GitCommitHorizontal, GitPullRequest, Loader2
 import { clsx } from 'clsx'
 import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../store'
-import type { GitConveyorStatus, GitFileStatus } from '../../../shared/ipc-contracts'
+import type { GitCommitMessageDraft, GitConveyorStatus, GitFileStatus } from '../../../shared/ipc-contracts'
 import { t } from '../../../shared/i18n'
 import { GIT_CONVEYOR_NOTICE_TIMEOUT_MS } from '../../../shared/default-settings'
 import { formatIpcError } from '../utils/ipc-error'
+import { createStaleGuard } from '../utils/stale-guard'
+import { applyCommitMessageDraft, createCommitMessageInput, isCommitMessageStale, type CommitMessageInput } from '../utils/commit-message-input'
 
 type ConveyorDialog =
-  | { kind: 'commit'; message: string; pushAfter: boolean }
+  | ({ kind: 'commit'; workspaceId: string | undefined; pushAfter: boolean } & CommitMessageInput)
   | { kind: 'pr'; title: string; body: string; base: string }
 
 type GitStatusError = { message: string; dismissed: boolean } | null
@@ -83,7 +85,10 @@ export function scheduleGitNoticeDismissal(kind: keyof typeof GIT_CONVEYOR_NOTIC
 
 export function GitConveyorActions({ children, onChanged }: { children?: ReactNode; onChanged?: () => void }): React.JSX.Element {
   const { t } = useTranslation()
+  const workspaceId = useAppStore((state) => state.activeWorkspace?.id)
   const [status, setStatus] = useState<GitConveyorStatus | null>(null)
+  const [draft, setDraft] = useState<GitCommitMessageDraft | null>(null)
+  const refreshGuard = useRef(createStaleGuard())
   const [busy, setBusy] = useState<'commit' | 'commitPush' | 'push' | 'pr' | null>(null)
   const busyRef = useRef(false)
   const [dialog, setDialog] = useState<ConveyorDialog | null>(null)
@@ -109,27 +114,45 @@ export function GitConveyorActions({ children, onChanged }: { children?: ReactNo
   }, [feedback])
 
   const refresh = useCallback(async (): Promise<void> => {
+    const isCurrent = refreshGuard.current.begin()
+    const sameWorkspace = (): boolean => isCurrent() && useAppStore.getState().activeWorkspace?.id === workspaceId
     try {
-      const [nextStatus, files] = await Promise.all([
+      const [nextStatus, files, nextDraft] = await Promise.all([
         window.piDesktop.git.status(),
         window.piDesktop.files.getGitStatus(),
+        window.piDesktop.git.getCommitMessage(),
       ])
+      if (!sameWorkspace()) return
       setStatus(nextStatus)
+      setDraft(nextDraft)
+      setDialog((current) => current?.kind === 'commit' && current.workspaceId === workspaceId
+        ? applyCommitMessageDraft(current, nextDraft) : current)
       setPublishAction(gitPublishAction(files))
       dispatchStatusError({ type: 'recovered' })
     } catch (err) {
+      if (!sameWorkspace()) return
       setStatus(null)
+      setDraft(null)
       setPublishAction('push')
       dispatchStatusError({ type: 'failed', message: formatIpcError(err) })
     }
-  }, [])
+  }, [workspaceId])
 
   useEffect(() => {
+    setStatus(null)
+    setDraft(null)
+    setDialog(null)
     void refresh()
+    const unsubscribe = window.piDesktop.git.onCommitMessageChanged(() => { void refresh() })
     const timer = window.setInterval(() => {
       if (document.visibilityState === 'visible') void refresh()
     }, 5000)
-    return () => window.clearInterval(timer)
+    const guard = refreshGuard.current
+    return () => {
+      guard.begin()
+      unsubscribe()
+      window.clearInterval(timer)
+    }
   }, [refresh])
 
   const run = async <T,>(
@@ -160,9 +183,11 @@ export function GitConveyorActions({ children, onChanged }: { children?: ReactNo
     setError(null)
     setDialog({
       kind: 'commit',
-      message: status?.lastCommitMessage ?? 'chore: update implementation',
+      ...createCommitMessageInput(draft),
+      workspaceId,
       pushAfter,
     })
+    void refresh()
   }
 
   const openPrDialog = (): void => {
@@ -198,7 +223,10 @@ export function GitConveyorActions({ children, onChanged }: { children?: ReactNo
       setDialog(null)
       void run(
         dialog.pushAfter ? 'commitPush' : 'commit',
-        () => commitConveyorChanges(message, dialog.pushAfter),
+        () => {
+          assertWorkspace(dialog.workspaceId)
+          return commitConveyorChanges(message, dialog.pushAfter)
+        },
         (next) => dialog.pushAfter
           ? next.dirtyFiles > 0
             ? t('conveyor.feedback.pushedWithLocalChanges', { count: next.dirtyFiles })
@@ -329,9 +357,20 @@ export function GitConveyorActions({ children, onChanged }: { children?: ReactNo
                 <input
                   autoFocus
                   value={dialog.message}
-                  onChange={(event) => setDialog({ ...dialog, message: event.target.value })}
+                  onChange={(event) => setDialog({ ...dialog, message: event.target.value, edited: true })}
                   className="mt-1 w-full rounded border border-border-strong bg-app px-2 py-1.5 text-sm text-primary outline-none focus:border-focus"
                 />
+                <span className="mt-2 block text-xs text-muted" role="status">
+                  {isCommitMessageStale(dialog, draft)
+                    ? t('conveyor.draft.stale')
+                    : draft?.generating
+                      ? t('conveyor.draft.generating')
+                      : draft?.error === 'diff-too-large'
+                        ? t('conveyor.draft.tooLarge')
+                        : draft?.error
+                          ? t('conveyor.draft.failed')
+                          : !dialog.message ? t('conveyor.draft.empty') : null}
+                </span>
               </label>
             ) : (
               <div className="space-y-2">

@@ -16,7 +16,7 @@ export const TOKEN_NAMES = [
   'success', 'success-bg', 'warning', 'warning-bg', 'error', 'error-hover', 'error-bg',
   'info', 'info-bg', 'special', 'special-bg',
   // misc
-  'chat-column', 'chat-column-border', 'scrollbar', 'scrollbar-hover',
+  'sidebar', 'chat-column', 'chat-column-border', 'scrollbar', 'scrollbar-hover',
   'md-code', 'md-pre-bg',
 ] as const
 export type TokenName = (typeof TOKEN_NAMES)[number]
@@ -70,6 +70,7 @@ export const DERIVED_TOKENS: Record<string, string> = {
   'info-bg': WASH('info', 85),
   special: 'var(--color-accent-fg)',
   'special-bg': WASH('special', 85),
+  sidebar: 'var(--color-app)',
   'chat-column': 'var(--color-app)',
   'chat-column-border': 'var(--color-border)',
   scrollbar: 'var(--color-border)',

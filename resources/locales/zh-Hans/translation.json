@@ -267,6 +267,13 @@
       "prTitle": "创建 PR",
       "titleLabel": "标题"
     },
+    "draft": {
+      "empty": "每轮对话结束后，若待提交的差异发生变化，将自动准备英文提交信息。你也可以自行填写。",
+      "failed": "无法生成建议，请手动输入提交信息。",
+      "generating": "正在准备英文建议…你可以直接填写提交信息，无需等待。",
+      "stale": "准备此信息后，待提交的内容已发生变化。请在提交前检查信息。",
+      "tooLarge": "差异过大，无法自动生成提交信息。请手动输入。"
+    },
     "errors": {
       "branchRequired": "创建 PR 需要一个具名分支。",
       "commitBeforePr": "创建 PR 前请先提交更改。",
@@ -283,7 +290,7 @@
       "prCreated": "PR 已创建。",
       "prCreatedWithUrl": "PR 已创建：{{url}}",
       "pushedCommits_other": "已推送 {{count}} 个提交。",
-      "pushedWithLocalChanges_other": "分支已推送。{{count}} 个本地文件仍有未提交的更改；推送不会包含或删除这些更改。"
+      "pushedWithLocalChanges_other": "推送完成。{{count}} 个文件有未提交的更改。"
     },
     "prButtonLabel": "PR",
     "prButtonTitle": "使用 GitHub CLI 创建 PR",

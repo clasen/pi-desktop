@@ -149,6 +149,8 @@ export const IPC_CHANNELS = {
   GIT_STATUS: 'git:status',
   GIT_BRANCH: 'git:branch',
   GIT_CONVEYOR_STATUS: 'git:conveyor-status',
+  GIT_COMMIT_MESSAGE: 'git:commit-message',
+  EVENT_GIT_COMMIT_MESSAGE: 'event:git-commit-message',
   GIT_CONVEYOR_COMMIT: 'git:conveyor-commit',
   GIT_CONVEYOR_PUSH: 'git:conveyor-push',
   GIT_CONVEYOR_CREATE_PR: 'git:conveyor-create-pr',
@@ -294,6 +296,14 @@ export interface GitConveyorStatus {
   /** Default base branch discovered from the upstream remote, when available. */
   baseBranch: string | null
   remoteUrl: string | null
+}
+
+export interface GitCommitMessageDraft {
+  /** Fingerprint of the current commit selection, not of the conversation. */
+  fingerprint: string | null
+  suggestion: { fingerprint: string; message: string } | null
+  generating: boolean
+  error: 'generation-failed' | 'diff-too-large' | null
 }
 
 export interface GitConveyorCommitOptions {

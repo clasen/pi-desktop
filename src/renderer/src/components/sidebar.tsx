@@ -2,15 +2,12 @@ import { useTranslation } from 'react-i18next'
 import { useAppStore, countPromptsWaitingElsewhere, formatPromptsWaiting } from '../store'
 import { summarizeBackgroundActivity, workspaceActivityIndicator } from './sidebar-activity'
 import { pathGroupKey, pathsEqual } from '../../../shared/path-compare'
-import { PI_DESKTOP_PRODUCT_NAME } from '../../../shared/product-name'
 import { clsx } from 'clsx'
 import {
-  Home,
   MessageSquare,
   Settings,
   FolderOpen,
   Plus,
-  PanelLeftClose,
   CheckCircle2,
   Activity,
   LayoutDashboard,
@@ -58,7 +55,6 @@ export function Sidebar(): React.JSX.Element {
   const { t } = useTranslation()
   const currentView = useAppStore((state) => state.currentView)
   const setCurrentView = useAppStore((state) => state.setCurrentView)
-  const toggleSidebar = useAppStore((state) => state.toggleSidebar)
   const sessionState = useAppStore((state) => state.sessionState)
   const sessionList = useAppStore((state) => state.sessionList)
   const sessionRuntimes = useAppStore((state) => state.sessionRuntimes)
@@ -414,38 +410,9 @@ export function Sidebar(): React.JSX.Element {
   return (
     <>
     <aside
-      className="flex shrink-0 flex-col border-r border-border bg-app"
+      className="flex shrink-0 flex-col border-r border-border bg-sidebar"
       style={{ width: sidebarWidth }}
     >
-      {/* Header */}
-      <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-3">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setCurrentView('home')}
-            className={clsx(
-              'rounded p-1.5 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus',
-              currentView === 'home'
-                ? 'bg-card text-accent-fg'
-                : 'text-muted hover:bg-surface-hover hover:text-primary'
-            )}
-            title={t('sidebar.header.homeTitle')}
-            aria-label={t('sidebar.header.homeAriaLabel')}
-          >
-            <Home size={16} />
-          </button>
-          <span className="text-sm font-medium text-primary">{PI_DESKTOP_PRODUCT_NAME}</span>
-        </div>
-        <button
-          onClick={toggleSidebar}
-          className="rounded p-1 text-muted hover:bg-surface-hover hover:text-primary"
-          title={t('sidebar.header.closeSidebar')}
-          aria-label={t('sidebar.header.closeSidebar')}
-        >
-          <PanelLeftClose size={16} />
-        </button>
-      </div>
-
       {/* Project + primary action */}
       <div className="border-b border-border pb-3">
         <div className="flex items-center justify-between px-3 pt-3">

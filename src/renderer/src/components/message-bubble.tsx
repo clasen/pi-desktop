@@ -21,6 +21,7 @@ import { MarkdownRenderer } from './markdown-renderer'
 import { CopyButton } from './copy-button'
 import { useContextMenu, buildMessageContextMenu } from './context-menu'
 import { RelativeTime } from '../utils/relative-time'
+import { isImeComposing } from '../utils/ime-composing'
 import { clsx } from 'clsx'
 import {
   Copy,
@@ -216,6 +217,13 @@ function UserMessage({
             ref={editRef}
             value={editContent}
             onChange={(e) => onEditContentChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && !isImeComposing(e.nativeEvent)) {
+                e.preventDefault()
+                e.stopPropagation()
+                onSaveEdit()
+              }
+            }}
             className="font-chat w-full rounded-2xl rounded-br-md bg-card px-4 py-2.5 text-sm text-primary resize-none min-h-[40px] max-h-48 outline-none"
             rows={1}
             onInput={(e) => {

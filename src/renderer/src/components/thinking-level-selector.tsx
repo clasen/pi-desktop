@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Check, ChevronUp, Zap } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAppStore } from '../store'
+import { thinkingLevels } from '../utils/thinking-levels'
 
 interface ThinkingLevelSelectorProps {
   className?: string
@@ -17,13 +18,7 @@ export function ThinkingLevelSelector({ className }: ThinkingLevelSelectorProps)
   const [isOpen, setIsOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
-  const modelEfforts = sessionState?.model?.thinking?.efforts?.filter(
-    (level) => typeof level === 'string' && level.length > 0,
-  )
-  const levels =
-    modelEfforts && modelEfforts.length > 0
-      ? ['off', ...modelEfforts.filter((level) => level !== 'off')]
-      : ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+  const levels = thinkingLevels(sessionState?.model)
   const currentLevel = sessionState?.thinkingLevel ?? 'medium'
 
   useEffect(() => {
@@ -51,7 +46,12 @@ export function ThinkingLevelSelector({ className }: ThinkingLevelSelectorProps)
         aria-expanded={isOpen}
       >
         <Zap size={11} className="shrink-0 text-accent-fg" />
-        <span>{currentLevel}</span>
+        <span className="inline-grid text-left">
+          {levels.map((level) => (
+            <span key={level} className="invisible col-start-1 row-start-1" aria-hidden="true">{level}</span>
+          ))}
+          <span className="col-start-1 row-start-1">{currentLevel}</span>
+        </span>
         <ChevronUp size={10} className={clsx('shrink-0 transition-transform', isOpen && 'rotate-180')} />
       </button>
 

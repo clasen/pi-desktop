@@ -5,8 +5,9 @@ import { DEFAULT_AGENT_ENGINE_LABEL, agentEngineLabel } from '../../../shared/ag
 import type { ModelInfo } from '../../../shared/ipc-contracts'
 import { filterModels, sortModelsByRecency } from '../utils/model-search'
 import { readModelRecency, recordModelUse } from '../utils/model-recency'
+import { thinkingLevels, stepThinkingLevel } from '../utils/thinking-levels'
 import { clsx } from 'clsx'
-import { Cpu, ChevronUp, Check, Loader2, Search } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Cpu, ChevronUp, Check, Loader2, Search } from 'lucide-react'
 
 interface ModelSelectorProps {
   className?: string
@@ -21,6 +22,7 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
   const { t } = useTranslation()
   const sessionState = useAppStore((state) => state.sessionState)
   const setModel = useAppStore((state) => state.setModel)
+  const setThinkingLevel = useAppStore((state) => state.setThinkingLevel)
   const listModels = useAppStore((state) => state.listModels)
   const workspaceId = useAppStore((state) => state.activeWorkspace?.id)
   const runtimeId = useAppStore((state) => state.activeSessionRuntimeId)
@@ -143,6 +145,17 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
       if (filteredModels.length === 0) return
       const step = e.key === 'ArrowDown' ? 1 : -1
       setHighlighted((i) => (i + step + filteredModels.length) % filteredModels.length)
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.nativeEvent.isComposing) return
+      e.preventDefault()
+      e.stopPropagation()
+      const state = useAppStore.getState()
+      if (state.piStatus !== 'running' || !state.sessionState?.model) return
+      const current = state.sessionState.thinkingLevel ?? 'medium'
+      const next = stepThinkingLevel(
+        thinkingLevels(state.sessionState.model), current, e.key === 'ArrowRight' ? 1 : -1,
+      )
+      if (next !== current) void setThinkingLevel(next)
     } else if (e.key === 'Enter') {
       e.preventDefault()
       const model = filteredModels[highlighted]
@@ -183,6 +196,11 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
               <div className="text-sm font-medium text-primary">{currentModel.name}</div>
               <div className="mt-0.5 text-xs text-dim">
                 {currentModel.provider} · {currentModel.id}
+              </div>
+              <div className="mt-1 flex items-center gap-1 text-xs text-muted" aria-live="polite">
+                {t('thinking.effortWithLevel', { level: sessionState?.thinkingLevel ?? 'medium' })}
+                <ArrowLeft size={12} aria-hidden="true" />
+                <ArrowRight size={12} aria-hidden="true" />
               </div>
             </div>
           )}

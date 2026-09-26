@@ -13,6 +13,7 @@ import {
   githubRepoFromRemote,
   parseAheadBehind,
   pushBranch,
+  readCommitDiff,
 } from './git-conveyor'
 
 type GitRunner = (args: string[], cwd?: string) => string
@@ -57,6 +58,78 @@ async function rejectCommits(repo: string, git: GitRunner): Promise<void> {
   // Pin the path so a global core.hooksPath cannot disable the hook.
   git(['config', 'core.hooksPath', hooks])
 }
+
+test('commit snapshots follow the curated index and exclude unstaged and untracked content', async () => {
+  await withGitRepo(async (repo, git) => {
+    await writeFile(join(repo, 'app.ts'), 'original\n')
+    git(['add', '.'])
+    git(['commit', '-m', 'initial'])
+    assert.equal(await readCommitDiff(repo), null)
+    await writeFile(join(repo, 'app.ts'), 'staged version\n')
+    const unstaged = await readCommitDiff(repo)
+    git(['add', 'app.ts'])
+    const staged = await readCommitDiff(repo)
+    assert.equal(unstaged?.fingerprint, staged?.fingerprint)
+    await writeFile(join(repo, 'app.ts'), 'later unstaged version\n')
+    await writeFile(join(repo, 'untracked.txt'), 'not part of the commit\n')
+    const selected = await readCommitDiff(repo)
+    assert.equal(selected?.fingerprint, staged?.fingerprint)
+    assert.match(selected!.diff, /\+staged version/)
+    assert.doesNotMatch(selected!.diff, /later unstaged|not part of the commit/)
+    assert.equal(git(['show', ':app.ts']), 'staged version')
+  })
+})
+
+test('auto-stage snapshots accumulate tracked changes and change when content changes', async () => {
+  await withGitRepo(async (repo, git) => {
+    for (const name of ['a.txt', 'b.txt']) await writeFile(join(repo, name), 'original\n')
+    git(['add', '.'])
+    git(['commit', '-m', 'initial'])
+    await writeFile(join(repo, 'a.txt'), 'first change\n')
+    const first = await readCommitDiff(repo)
+    await writeFile(join(repo, 'b.txt'), 'second change\n')
+    const both = await readCommitDiff(repo)
+    assert.notEqual(first?.fingerprint, both?.fingerprint)
+    assert.match(both!.diff, /first change/)
+    assert.match(both!.diff, /second change/)
+    assert.equal(git(['diff', '--cached']), '')
+  })
+})
+
+test('snapshots support staged first commits and detect binary content changes', async () => {
+  await withGitRepo(async (repo, git) => {
+    await writeFile(join(repo, 'image.bin'), Buffer.from([0, 1, 2]))
+    assert.equal(await readCommitDiff(repo), null)
+    git(['add', '.'])
+    const first = await readCommitDiff(repo)
+    assert.match(first!.diff, /GIT binary patch/)
+    await writeFile(join(repo, 'image.bin'), Buffer.from([0, 1, 3]))
+    git(['add', '.'])
+    assert.notEqual((await readCommitDiff(repo))?.fingerprint, first?.fingerprint)
+  })
+})
+
+test('snapshot scope matches commit scope in a monorepo and rejects an outside index', async () => {
+  await withGitRepo(async (repo, git) => {
+    const app = join(repo, 'app')
+    await mkdir(app)
+    await writeFile(join(app, 'a.txt'), 'original\n')
+    await writeFile(join(repo, 'outside.txt'), 'original\n')
+    git(['add', '.'])
+    git(['commit', '-m', 'initial'])
+    await writeFile(join(app, 'a.txt'), 'inside\n')
+    await writeFile(join(repo, 'outside.txt'), 'outside\n')
+    const snapshot = await readCommitDiff(app)
+    assert.match(snapshot!.diff, /\+inside/)
+    assert.doesNotMatch(snapshot!.diff, /outside.txt/)
+    git(['add', 'outside.txt'])
+    await assert.rejects(readCommitDiff(app), /outside/i)
+  })
+})
+
+test('non-repository folders have no commit snapshot', async () => {
+  await withPlainFolder(async (folder) => assert.equal(await readCommitDiff(folder), null))
+})
 
 test('countPorcelainFiles counts changed porcelain rows, not changed lines', () => {
   assert.equal(countPorcelainFiles(' M src/a.ts\n?? src/new.ts\n'), 2)

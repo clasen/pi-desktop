@@ -102,7 +102,7 @@ export function ChatPanel(): React.JSX.Element {
   // decides whether chat is on screen. Without it the scroll hook never sees
   // the hidden→shown edge and cannot re-anchor the reading position.
   const chatVisible = useChatVisible()
-  const { scrollRef, onScroll, atBottom, scrollToBottom } = useChatScroll(chatVisible)
+  const { scrollRef, onScroll, atBottom, scrollToBottom } = useChatScroll(chatVisible, composerPadPx)
 
   // In-conversation search (Ctrl/Cmd+F while in chat). The nonce bumps on every
   // press so re-triggering refocuses/selects the already-open input.
@@ -371,7 +371,12 @@ export function ChatPanel(): React.JSX.Element {
                     <div className={clsx('pointer-events-auto mx-auto w-full px-4', messageColumn)}>
                       <CouncilPanels />
                     </div>
-                    {reattachedMidTurn && (
+                    {/* Once the attached stream shows live output, the turn is visibly
+                        in progress and "appears when it finishes" would be wrong. */}
+                    {reattachedMidTurn &&
+                      !streamingContent &&
+                      !streamingThinking &&
+                      streamingToolCalls.size === 0 && (
                       <div className={clsx('pointer-events-auto mx-auto mb-2 w-full px-4', messageColumn)}>
                         <div className="flex items-center gap-2.5 rounded-md bg-accent px-4 py-2.5 text-sm text-white shadow-lg shadow-black/30">
                           <Loader2 size={16} className="shrink-0 animate-spin" />
