@@ -1,4 +1,5 @@
 import { watch, type FSWatcher } from 'chokidar'
+import { isUtf8 } from 'node:buffer'
 import { readdir, stat, readFile, writeFile, realpath } from 'fs/promises'
 import { join, extname, basename, resolve, relative, isAbsolute, sep, dirname } from 'path'
 import { execFile } from 'child_process'
@@ -212,18 +213,26 @@ export interface SearchResult {
   snippet?: string
 }
 
-export function buildNewFileDiff(relativePath: string, content: string): string {
-  const lines = content.endsWith('\n') ? content.slice(0, -1).split('\n') : content.split('\n')
+export function buildNewFileDiff(relativePath: string, input: string | Buffer): string {
+  const binary = Buffer.isBuffer(input) && (input.includes(0) || !isUtf8(input))
+  const content = binary ? '' : input.toString()
+  const lines = content === '' ? [] : (content.endsWith('\n') ? content.slice(0, -1).split('\n') : content.split('\n'))
   const hunkSize = lines.length
+  const oldPath = /["\\\r\n\t]/.test(relativePath) ? JSON.stringify(`a/${relativePath}`) : `a/${relativePath}`
+  const newPath = /["\\\r\n\t]/.test(relativePath) ? JSON.stringify(`b/${relativePath}`) : `b/${relativePath}`
 
   return [
-    `diff --git a/${relativePath} b/${relativePath}`,
+    `diff --git ${oldPath} ${newPath}`,
     'new file mode 100644',
     'index 0000000..0000000',
-    '--- /dev/null',
-    `+++ b/${relativePath}`,
-    `@@ -0,0 +1,${hunkSize} @@`,
-    ...lines.map((line) => `+${line}`),
+    ...(binary ? [`Binary files /dev/null and ${newPath} differ`] : []),
+    ...(hunkSize ? [
+      '--- /dev/null',
+      `+++ ${newPath}`,
+      `@@ -0,0 +1,${hunkSize} @@`,
+      ...lines.map((line) => `+${line}`),
+      ...(content.endsWith('\n') ? [] : ['\\ No newline at end of file']),
+    ] : []),
     '',
   ].join('\n')
 }
@@ -421,8 +430,7 @@ export class FileService {
    */
   async getFileDiff(filePath?: string): Promise<string> {
     try {
-      const args = ['diff']
-      if (filePath) args.push(filePath)
+      const args = ['-c', 'core.quotepath=false', 'diff', '--no-ext-diff', '--no-textconv', '--no-color', '--src-prefix=a/', '--dst-prefix=b/', '--', filePath ?? '.']
       const { stdout } = await execFileAsync('git', args, {
         cwd: this.workspacePath,
         timeout: 10_000,
@@ -437,19 +445,24 @@ export class FileService {
   }
 
   private async getUntrackedFileDiff(filePath?: string): Promise<string> {
-    const statusMap = await this.getGitStatus()
-    const untrackedPaths = [...statusMap.entries()]
-      .filter(([, status]) => status.index === '?' && status.worktree === '?')
-      .map(([path]) => path)
-      .filter((path) => !filePath || path === filePath)
+    const [{ stdout }, prefix] = await Promise.all([
+      execFileAsync('git', ['ls-files', '--others', '--exclude-standard', '-z', '--', filePath ?? '.'], {
+        cwd: this.workspacePath,
+        timeout: 10_000,
+        maxBuffer: GIT_OUTPUT_MAX_BUFFER_BYTES,
+      }),
+      this.getGitPrefix(),
+    ])
+    const untrackedPaths = stdout.split('\0').filter((path) => path && !path.startsWith('../'))
+      .map((relativePath) => ({ path: prefix + relativePath, relativePath }))
 
     const diffs: string[] = []
-    for (const path of untrackedPaths) {
+    for (const { path, relativePath } of untrackedPaths) {
       try {
-        const content = await readFile(join(this.workspacePath, path), 'utf-8')
+        const content = await readFile(join(this.workspacePath, relativePath))
         diffs.push(buildNewFileDiff(path, content))
-      } catch {
-        // Skip unreadable or binary-like untracked files.
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
       }
     }
 
@@ -462,8 +475,7 @@ export class FileService {
    */
   async getStagedDiff(filePath?: string): Promise<string> {
     try {
-      const args = ['diff', '--cached']
-      if (filePath) args.push(filePath)
+      const args = ['-c', 'core.quotepath=false', 'diff', '--cached', '--', filePath ?? '.']
       const { stdout } = await execFileAsync('git', args, {
         cwd: this.workspacePath,
         timeout: 10_000,

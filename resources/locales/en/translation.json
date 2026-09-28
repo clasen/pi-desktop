@@ -440,6 +440,7 @@
     }
   },
   "diff": {
+    "binaryFile": "Binary file — use Open file to preview supported images.",
     "closeAriaLabel": "Close diff viewer",
     "deletedFileBadge": "DELETED",
     "fileCount_one": "{{count}} file",
@@ -451,6 +452,12 @@
     "noStagedChanges": "No staged changes",
     "openFile": "Open file",
     "refreshAriaLabel": "Refresh diff",
+    "sessionFilter": {
+      "actionsUnfiltered": "This filter only changes the review. Commit, Push and PR actions are not scoped to these files.",
+      "description": "Files observed changing during this session's turns, plus edit/write calls in its history. Includes shell, subagent and binary changes recorded by this app. Whole-file diffs may include concurrent or pre-existing edits; use separate worktrees for isolation. Earlier unrecorded shell changes cannot be recovered. Turn off to see the whole project.",
+      "label": "Files touched in this session",
+      "noMatches": "No matching changes for this session"
+    },
     "stagedToggle": "Staged",
     "workingToggle": "Working",
     "workingTreeClean": "Working tree is clean"

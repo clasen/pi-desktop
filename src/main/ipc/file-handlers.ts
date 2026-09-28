@@ -65,6 +65,11 @@ export function registerFileHandlers(ctx: IpcContext): void {
     return fs.getFileDiff(isString(filePath) ? filePath : undefined)
   })
 
+  ipcMain.handle(IPC_CHANNELS.FILE_SESSION_CHANGE_PATHS, async (_event, runtimeId: unknown) => {
+    if (!isString(runtimeId)) throw new Error('runtimeId must be a string')
+    return workspaceManager.getSessionChangePaths(runtimeId)
+  })
+
   ipcMain.handle(IPC_CHANNELS.FILE_STAGED_DIFF, async (_event, filePath?: unknown) => {
     const fs = workspaceManager.getActiveFileService()
     if (!fs) throw new Error(t('errors.workspace.noneActive'))

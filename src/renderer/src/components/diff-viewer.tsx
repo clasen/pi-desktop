@@ -6,6 +6,7 @@ import { clsx } from 'clsx'
 import {
   AlertTriangle,
   GitCompare,
+  MessageSquare,
   FilePenLine,
   File,
   RefreshCw,
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react'
 import { formatIpcError } from '../utils/ipc-error'
 import { createStaleGuard } from '../utils/stale-guard'
+import { filterSessionDiffFiles } from '../utils/session-diff'
 import { GitConveyorActions } from './git-conveyor-actions'
 import { openFilePreview } from './chat-file-link'
 import { joinWorkspacePath, workspaceRelativeGitPath } from '../utils/workspace-path'
@@ -32,7 +34,18 @@ interface DiffFileBlock {
   newPath: string
   isNew: boolean
   isDeleted: boolean
+  isBinary: boolean
   hunks: DiffLine[][]
+}
+
+export function subscribeDiffRefresh(refresh: () => Promise<void>): () => void {
+  const unsubscribeAgent = window.piDesktop.onEvent((event) => {
+    if (event.type === 'agent_end' || (event.type === 'status_change' && (event.status === 'stopped' || event.status === 'error'))) void refresh()
+  })
+  const unsubscribeFiles = window.piDesktop.onFileChange((event) => {
+    if (event.relativePath === '.') void refresh()
+  })
+  return () => { unsubscribeAgent(); unsubscribeFiles() }
 }
 
 interface DiffViewerProps {
@@ -47,22 +60,36 @@ export function DiffViewer({ onClose }: DiffViewerProps = {}): React.JSX.Element
   const [loadError, setLoadError] = useState<string | null>(null)
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set())
   const [stagedMode, setStagedMode] = useState(false)
+  const [sessionOnly, setSessionOnly] = useState(true)
   const setCurrentView = useAppStore((state) => state.setCurrentView)
   const workspaceId = useAppStore((state) => state.activeWorkspace?.id)
+  const workspacePath = useAppStore((state) => state.activeWorkspace?.path)
+  const messages = useAppStore((state) => state.messages)
+  const runtimeId = useAppStore((state) => state.activeSessionRuntimeId)
+  const sessionPath = useAppStore((state) => state.activeSessionRuntimeId
+    ? state.sessionRuntimes[state.activeSessionRuntimeId]?.sessionPath ?? null : null)
+  const [observed, setObserved] = useState<{ runtimeId: string | null; sessionPath: string | null; paths: string[] }>({ runtimeId: null, sessionPath: null, paths: [] })
   const loadGuard = useMemo(() => createStaleGuard(), [])
+  const visibleFiles = useMemo(() => sessionOnly
+    ? workspacePath ? filterSessionDiffFiles(files, messages, workspacePath, gitPrefix,
+      observed.runtimeId === runtimeId && observed.sessionPath === sessionPath ? observed.paths : []) : []
+    : files, [files, gitPrefix, messages, observed, runtimeId, sessionPath, sessionOnly, workspacePath])
 
   const loadDiff = useCallback(async () => {
     const isCurrent = loadGuard.begin()
     setLoading(true)
     setFiles([])
     setLoadError(null)
+    setObserved({ runtimeId, sessionPath, paths: [] })
     try {
-      const [diff, prefix] = await Promise.all([
+      const [diff, prefix, paths] = await Promise.all([
         stagedMode ? window.piDesktop.files.getStagedDiff() : window.piDesktop.files.getDiff(),
         window.piDesktop.files.getGitPrefix(),
+        runtimeId && sessionOnly ? window.piDesktop.files.getSessionChangePaths(runtimeId) : Promise.resolve([]),
       ])
       if (!isCurrent()) return
       setGitPrefix(prefix)
+      setObserved({ runtimeId, sessionPath, paths })
       setFiles(parseDiff(diff))
       setLoadError(null)
     } catch (err) {
@@ -72,12 +99,14 @@ export function DiffViewer({ onClose }: DiffViewerProps = {}): React.JSX.Element
     } finally {
       if (isCurrent()) setLoading(false)
     }
-  }, [stagedMode, loadGuard])
+  }, [stagedMode, loadGuard, runtimeId, sessionPath, sessionOnly])
 
   useEffect(() => {
     void loadDiff()
     return () => { loadGuard.begin() }
   }, [loadDiff, loadGuard, workspaceId])
+
+  useEffect(() => subscribeDiffRefresh(loadDiff), [loadDiff])
 
   useEffect(() => {
     setExpandedFiles(new Set())
@@ -101,10 +130,22 @@ export function DiffViewer({ onClose }: DiffViewerProps = {}): React.JSX.Element
             <GitCompare size={16} className="shrink-0 text-muted" />
             <h2 className="truncate text-sm font-medium text-primary">{t('diff.heading')}</h2>
             <span className="shrink-0 rounded-full bg-card px-2 py-0.5 text-xs text-dim">
-              {t('diff.fileCount', { count: files.length })}
+              {t('diff.fileCount', { count: visibleFiles.length })}
             </span>
           </div>
           <div className="order-2 flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSessionOnly((value) => !value)}
+              aria-pressed={sessionOnly}
+              aria-label={t('diff.sessionFilter.label')}
+              title={t('diff.sessionFilter.description')}
+              className={clsx('rounded p-1.5 transition-colors', sessionOnly
+                ? 'bg-accent-bg text-accent-fg'
+                : 'text-muted hover:bg-surface-hover hover:text-primary')}
+            >
+              <MessageSquare size={14} />
+            </button>
             <button
               onClick={() => setStagedMode(!stagedMode)}
               className={clsx(
@@ -139,6 +180,7 @@ export function DiffViewer({ onClose }: DiffViewerProps = {}): React.JSX.Element
           </div>
           <div className="order-3 min-w-0 basis-full border-t border-border pt-2">
             <GitConveyorActions key={workspaceId} onChanged={loadDiff} />
+            {sessionOnly && <p className="mt-2 text-xs text-muted">{t('diff.sessionFilter.actionsUnfiltered')}</p>}
           </div>
         </div>
       </div>
@@ -161,17 +203,17 @@ export function DiffViewer({ onClose }: DiffViewerProps = {}): React.JSX.Element
               {t('common.retry')}
             </button>
           </div>
-        ) : files.length === 0 ? (
+        ) : visibleFiles.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-dim">
             <GitCompare size={32} className="mb-3 text-faint" />
-            <p className="text-sm">{t('diff.noChanges')}</p>
-            <p className="mt-1 text-xs text-faint">
-              {stagedMode ? t('diff.noStagedChanges') : t('diff.workingTreeClean')}
+            <p className="text-sm">{sessionOnly ? t('diff.sessionFilter.noMatches') : t('diff.noChanges')}</p>
+            <p className="mt-1 max-w-md px-4 text-center text-xs text-faint">
+              {sessionOnly ? t('diff.sessionFilter.description') : stagedMode ? t('diff.noStagedChanges') : t('diff.workingTreeClean')}
             </p>
           </div>
         ) : (
           <div className="p-4 space-y-2">
-            {files.map((file) => (
+            {visibleFiles.map((file) => (
               <DiffFileEntry
                 key={file.newPath}
                 file={file}
@@ -266,6 +308,7 @@ function DiffFileEntry({
       {/* Diff content */}
       {expanded && (
         <div className="border-t border-border overflow-x-auto">
+          {file.isBinary && <p className="px-3 py-2 text-xs text-muted">{t('diff.binaryFile')}</p>}
           <table className="font-jetbrains w-full" style={{ fontSize: `${codeFontSize}px` }}>
             <tbody>
               {file.hunks.map((hunk, hunkIdx) => (
@@ -314,7 +357,7 @@ function DiffHunk({ lines }: { lines: DiffLine[] }): React.JSX.Element {
 
 // ─── Diff Parser ─────────────────────────────────────────────────────────────
 
-function parseDiff(diffText: string): DiffFileBlock[] {
+export function parseDiff(diffText: string): DiffFileBlock[] {
   if (!diffText.trim()) return []
 
   const files: DiffFileBlock[] = []
@@ -364,7 +407,8 @@ function parseDiff(diffText: string): DiffFileBlock[] {
 
     if (currentHunk.length > 0) hunks.push(currentHunk)
 
-    files.push({ oldPath, newPath, isNew, isDeleted, hunks })
+    const isBinary = /^Binary files |^GIT binary patch$/m.test(block)
+    files.push({ oldPath, newPath, isNew, isDeleted, isBinary, hunks })
   }
 
   return files

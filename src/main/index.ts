@@ -80,6 +80,8 @@ let workspaceTerminals: WorkspaceTerminals | null = null
 // quit (menu/tray Quit, Cmd-Ctrl+Q) from a window close that should hide to tray.
 let mainWindow: BrowserWindow | null = null
 let isQuitting = false
+let shutdownPending: Promise<void> | null = null
+let shutdownComplete = false
 
 // Guards the renderer's unsaved editor buffer against teardown. The renderer
 // mirrors its dirty flag here (ui:editor-dirty-set); quit, non-tray window
@@ -542,13 +544,20 @@ app.on('before-quit', (event) => {
   // the window actually close. This is the single choke point every quit path
   // flows through (menu/tray Quit, Cmd-Ctrl+Q).
   isQuitting = true
+  // End snapshots and atomic session-change writes must finish before Electron exits.
+  if (!shutdownComplete) {
+    event.preventDefault()
+    shutdownPending ??= (workspaceManager?.stopAll() ?? Promise.resolve())
+      .catch((error) => appLog.warn('session-diff', 'Failed to flush session changes on quit', error))
+      .then(() => { shutdownComplete = true; app.quit() })
+    return
+  }
   // Release the tray icon so it doesn't linger in the notification area.
   destroyTray()
   // Synchronous incremental scan + write: captures every session touched this
   // run before we exit (async I/O isn't guaranteed to finish during shutdown).
   activityStatsStore.flushSync()
   appLog.flushSync()
-  workspaceManager?.stopAll()
   workspaceTerminals?.stopAll()
   // Windows: GUI-owned Pi TEMP does not get OS cleanup — wipe on quit.
   cleanupPiChildTempDir()

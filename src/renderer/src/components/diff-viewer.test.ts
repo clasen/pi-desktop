@@ -1,7 +1,7 @@
 import { beforeEach, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { useAppStore } from '../store'
-import { openDiffFile } from './diff-viewer'
+import { openDiffFile, parseDiff, subscribeDiffRefresh } from './diff-viewer'
 
 beforeEach(() => {
   Object.defineProperty(globalThis, 'window', {
@@ -39,6 +39,44 @@ test('opens monorepo diff paths relative to the workspace and skips files outsid
   assert.deepEqual(useAppStore.getState().previewTarget, {
     kind: 'code', name: 'a.ts', path: '/repo/pkg/app/src/a.ts', relativePath: 'src/a.ts',
   })
+})
+
+test('refreshes on agent completion, stop and branch change and removes subscriptions', () => {
+  let listener: Parameters<typeof window.piDesktop.onEvent>[0] | undefined
+  let fileListener: Parameters<typeof window.piDesktop.onFileChange>[0] | undefined
+  window.piDesktop.onEvent = (callback) => {
+    listener = callback
+    return () => { listener = undefined }
+  }
+  window.piDesktop.onFileChange = (callback) => {
+    fileListener = callback
+    return () => { fileListener = undefined }
+  }
+  let refreshes = 0
+  const close = subscribeDiffRefresh(async () => { refreshes++ })
+  listener?.({ type: 'agent_start' })
+  assert.equal(refreshes, 0)
+  listener?.({ type: 'agent_end', messages: [] })
+  listener?.({ type: 'status_change', status: 'stopped', pid: null, error: null })
+  fileListener?.({ changeType: 'change', relativePath: 'code.ts' })
+  assert.equal(refreshes, 2)
+  fileListener?.({ changeType: 'change', relativePath: '.' })
+  assert.equal(refreshes, 3)
+  close()
+  assert.equal(listener, undefined)
+  assert.equal(fileListener, undefined)
+})
+
+test('binary additions remain NEW with no text hunks and open in the image preview', async () => {
+  const [file] = parseDiff('diff --git a/assets/image.png b/assets/image.png\nnew file mode 100644\nBinary files /dev/null and b/assets/image.png differ\n')
+  assert.equal(file.isNew, true)
+  assert.equal(file.isBinary, true)
+  assert.deepEqual(file.hunks, [])
+  await openDiffFile(file, '')
+  assert.equal(useAppStore.getState().previewTarget?.kind, 'image')
+  const [tracked] = parseDiff('diff --git a/image.png b/image.png\nBinary files a/image.png and b/image.png differ\n')
+  assert.equal(tracked.isBinary, true)
+  assert.equal(tracked.isNew, false)
 })
 
 test('routes images to the image viewer and preserves Windows paths', async () => {

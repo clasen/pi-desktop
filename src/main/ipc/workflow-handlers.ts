@@ -92,7 +92,7 @@ export function registerWorkflowHandlers(ctx: IpcContext): void {
       try {
         // Extension commands execute immediately in Pi, even during streaming —
         // no LLM turn is started for a registered command.
-        await pi.sendCommand({ type: 'prompt', message: `/workflows ${action} ${runId}` })
+        await ctx.workspaceManager.sendTrackedCommand(pi, { type: 'prompt', message: `/workflows ${action} ${runId}` })
         return { action, runId, ok: true, dispatched: true }
       } catch (error) {
         return fail(error instanceof RpcTimeoutError ? 'timeout' : 'dispatch-failed')
