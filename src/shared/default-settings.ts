@@ -13,6 +13,12 @@ export const GIT_COMMIT_MESSAGE_CONFIG = {
   timeoutMs: 60_000,
 } as const
 
+export const SESSION_DIFF_CONFIG = {
+  snapshotTimeoutMs: 30_000,
+  maxGitOutputBytes: 64 * 1024 * 1024,
+  hashConcurrency: 8,
+} as const
+
 export const GIT_CONVEYOR_NOTICE_TIMEOUT_MS = {
   success: 5_000,
   error: 10_000,

@@ -37,6 +37,7 @@ interface DiffFileBlock {
   newPath: string
   isNew: boolean
   isDeleted: boolean
+  isBinary: boolean
   hunks: DiffLine[][]
 }
 
@@ -45,7 +46,7 @@ const TOOLBAR_BUTTON = 'flex shrink-0 items-center justify-center gap-1 rounded 
 
 export function subscribeDiffRefresh(refresh: () => Promise<void>): () => void {
   const unsubscribeAgent = window.piDesktop.onEvent((event) => {
-    if (event.type === 'agent_end') void refresh()
+    if (event.type === 'agent_end' || (event.type === 'status_change' && (event.status === 'stopped' || event.status === 'error'))) void refresh()
   })
   const unsubscribeFiles = window.piDesktop.onFileChange((event) => {
     // A branch switch invalidates the entire workspace, not just one file.
@@ -84,10 +85,15 @@ export function DiffViewer({ onClose }: DiffViewerProps = {}): React.JSX.Element
   const workspaceId = useAppStore((state) => state.activeWorkspace?.id)
   const workspacePath = useAppStore((state) => state.activeWorkspace?.path)
   const messages = useAppStore((state) => state.messages)
+  const runtimeId = useAppStore((state) => state.activeSessionRuntimeId)
+  const sessionPath = useAppStore((state) => state.activeSessionRuntimeId
+    ? state.sessionRuntimes[state.activeSessionRuntimeId]?.sessionPath ?? null : null)
+  const [observed, setObserved] = useState<{ runtimeId: string | null; sessionPath: string | null; paths: string[] }>({ runtimeId: null, sessionPath: null, paths: [] })
   const loadGuard = useMemo(() => createStaleGuard(), [])
   const visibleFiles = useMemo(() => sessionOnly
-    ? workspacePath ? filterSessionDiffFiles(files, messages, workspacePath, gitPrefix) : []
-    : files, [files, gitPrefix, messages, sessionOnly, workspacePath])
+    ? workspacePath ? filterSessionDiffFiles(files, messages, workspacePath, gitPrefix,
+      observed.runtimeId === runtimeId && observed.sessionPath === sessionPath ? observed.paths : []) : []
+    : files, [files, gitPrefix, messages, observed, runtimeId, sessionPath, sessionOnly, workspacePath])
   // Commit records the files on screen. The staged view without a filter
   // commits the index it shows.
   const commitSelection = useMemo(() => stagedMode && !sessionOnly ? undefined : diffCommitSelection(visibleFiles),
@@ -98,13 +104,16 @@ export function DiffViewer({ onClose }: DiffViewerProps = {}): React.JSX.Element
     setLoading(true)
     setFiles([])
     setLoadError(null)
+    setObserved({ runtimeId, sessionPath, paths: [] })
     try {
-      const [diff, prefix] = await Promise.all([
+      const [diff, prefix, paths] = await Promise.all([
         stagedMode ? window.piDesktop.files.getStagedDiff() : window.piDesktop.files.getDiff(),
         window.piDesktop.files.getGitPrefix(),
+        runtimeId && sessionOnly ? window.piDesktop.files.getSessionChangePaths(runtimeId) : Promise.resolve([]),
       ])
       if (!isCurrent()) return
       setGitPrefix(prefix)
+      setObserved({ runtimeId, sessionPath, paths })
       setFiles(parseDiff(diff))
       setLoadError(null)
     } catch (err) {
@@ -114,7 +123,7 @@ export function DiffViewer({ onClose }: DiffViewerProps = {}): React.JSX.Element
     } finally {
       if (isCurrent()) setLoading(false)
     }
-  }, [stagedMode, loadGuard])
+  }, [stagedMode, loadGuard, runtimeId, sessionPath, sessionOnly])
 
   useEffect(() => {
     void loadDiff()
@@ -416,6 +425,7 @@ function DiffFileEntry({
       {/* Diff content */}
       {expanded && (
         <div className="border-t border-border overflow-x-auto">
+          {file.isBinary && <p className="px-3 py-2 text-xs text-muted">{t('diff.binaryFile')}</p>}
           <table className="font-jetbrains w-full" style={{ fontSize: `${codeFontSize}px` }}>
             <tbody>
               {file.hunks.map((hunk, hunkIdx) => (
@@ -464,7 +474,7 @@ function DiffHunk({ lines }: { lines: DiffLine[] }): React.JSX.Element {
 
 // ─── Diff Parser ─────────────────────────────────────────────────────────────
 
-function parseDiff(diffText: string): DiffFileBlock[] {
+export function parseDiff(diffText: string): DiffFileBlock[] {
   if (!diffText.trim()) return []
 
   const files: DiffFileBlock[] = []
@@ -511,7 +521,8 @@ function parseDiff(diffText: string): DiffFileBlock[] {
 
     if (currentHunk.length > 0) hunks.push(currentHunk)
 
-    files.push({ patch: block, oldPath, newPath, isNew, isDeleted, hunks })
+    const isBinary = /^Binary files |^GIT binary patch$/m.test(block)
+    files.push({ patch: block, oldPath, newPath, isNew, isDeleted, isBinary, hunks })
   }
 
   return files

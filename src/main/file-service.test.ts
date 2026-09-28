@@ -304,6 +304,29 @@ test('getFileDiff and getStagedDiff return diffs larger than the execFile defaul
   assert.ok(stagedDiff.length > EXEC_FILE_DEFAULT_MAX_BUFFER_BYTES)
 })
 
+test('new binary files have a NEW binary patch without decoded bytes, including Unicode paths', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'fs-binary-'))
+  execFileSync('git', ['init', '-q'], { cwd: dir })
+  await mkdir(join(dir, 'assets'))
+  const image = Buffer.from([137, 80, 78, 71, 13, 10, 0, 255])
+  await writeFile(join(dir, 'assets', 'image 新.png'), image)
+  await writeFile(join(dir, 'invalid-utf8.bin'), Buffer.from([255, 254]))
+  const diff = await new FileService(dir).getFileDiff()
+  assert.match(diff, /new file mode 100644/)
+  assert.match(diff, /Binary files \/dev\/null and b\/assets\/image 新.png differ/)
+  assert.match(diff, /Binary files \/dev\/null and b\/invalid-utf8.bin differ/)
+  assert.doesNotMatch(diff, /@@|\ufffd/)
+  assert.equal(diff.includes('\0'), false)
+  const scoped = await new FileService(join(dir, 'assets')).getFileDiff()
+  assert.match(scoped, /^diff --git a\/assets\/image 新.png b\/assets\/image 新.png$/m)
+  assert.doesNotMatch(scoped, /invalid-utf8/)
+  execFileSync('git', ['add', 'assets'], { cwd: dir })
+  const staged = await new FileService(dir).getStagedDiff()
+  assert.match(staged, /^diff --git a\/assets\/image 新.png b\/assets\/image 新.png$/m)
+  assert.match(staged, /new file mode 100644/)
+  assert.match(staged, /Binary files/)
+})
+
 test('a monorepo subfolder workspace reports its Git prefix and diffs only its own files', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'fs-monorepo-'))
   const git = (...args: string[]): void => {

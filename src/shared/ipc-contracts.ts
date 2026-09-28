@@ -144,6 +144,7 @@ export const IPC_CHANNELS = {
   FILE_WRITE: 'file:write',
   FILE_DIFF: 'file:diff',
   FILE_STAGED_DIFF: 'file:staged-diff',
+  FILE_SESSION_CHANGE_PATHS: 'file:session-change-paths',
   FILE_DISCARD_DIFF: 'file:discard-diff',
   FILE_WATCH_DEMAND: 'file:watch-demand',
   GIT_STATUS: 'git:status',

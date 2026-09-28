@@ -1,7 +1,8 @@
 import { beforeEach, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { useAppStore } from '../store'
-import { discardDiffFiles, openDiffFile, subscribeDiffRefresh } from './diff-viewer'
+import { discardDiffFiles, openDiffFile, parseDiff, subscribeDiffRefresh } from './diff-viewer'
+import { canDiscardGitPatch } from '../../../shared/git-diff'
 import { filterSessionDiffFiles } from '../utils/session-diff'
 
 beforeEach(() => {
@@ -46,6 +47,8 @@ test('refreshes an open diff at agent end or a branch switch and unsubscribes wh
   assert.equal(refreshes, 2)
   fileListener?.({ changeType: 'change', relativePath: '.' })
   assert.equal(refreshes, 3)
+  listener?.({ type: 'status_change', status: 'stopped', pid: null, error: null })
+  assert.equal(refreshes, 4)
   close()
   assert.equal(listener, undefined)
   assert.equal(fileListener, undefined)
@@ -80,6 +83,19 @@ test('discard closes a monorepo preview opened by its workspace-relative path', 
   useAppStore.getState().resolveConfirm(true)
   assert.equal(await result, true)
   assert.equal(useAppStore.getState().previewTarget, null)
+})
+
+test('binary additions remain NEW with no text hunks and cannot be discarded as text', async () => {
+  const [file] = parseDiff('diff --git a/assets/image.png b/assets/image.png\nnew file mode 100644\nBinary files /dev/null and b/assets/image.png differ\n')
+  assert.equal(file.isNew, true)
+  assert.equal(file.isBinary, true)
+  assert.deepEqual(file.hunks, [])
+  assert.equal(canDiscardGitPatch(file.patch), false)
+  await openDiffFile(file, '')
+  assert.equal(useAppStore.getState().previewTarget?.kind, 'image')
+  const [tracked] = parseDiff('diff --git a/image.png b/image.png\nBinary files a/image.png and b/image.png differ\n')
+  assert.equal(tracked.isBinary, true)
+  assert.equal(tracked.isNew, false)
 })
 
 test('routes images to the image viewer and preserves Windows paths', async () => {

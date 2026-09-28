@@ -1,4 +1,5 @@
 import { watch, type FSWatcher } from 'chokidar'
+import { isUtf8 } from 'node:buffer'
 import { readdir, stat, readFile, writeFile, realpath } from 'fs/promises'
 import { join, extname, basename, resolve, relative, isAbsolute, sep, dirname } from 'path'
 import { execFile } from 'child_process'
@@ -7,7 +8,7 @@ import { homedir } from 'os'
 import { describeWriteError } from './fs-errors'
 import { appLog } from './app-log'
 import type { FileChangeEvent } from '../shared/ipc-contracts'
-import { canDiscardGitPatch, gitDiffPaths, splitGitDiff, workspaceRelativeGitPath } from '../shared/git-diff'
+import { canDiscardGitPatch, gitDiffPaths, splitGitDiff } from '../shared/git-diff'
 import { i18n, t, tEnglish, type Translate } from '../shared/i18n'
 
 const execFileAsync = promisify(execFile)
@@ -213,7 +214,9 @@ export interface SearchResult {
   snippet?: string
 }
 
-export function buildNewFileDiff(relativePath: string, content: string): string {
+export function buildNewFileDiff(relativePath: string, input: string | Buffer): string {
+  const binary = Buffer.isBuffer(input) && (input.includes(0) || !isUtf8(input))
+  const content = binary ? '' : input.toString()
   const lines = content === '' ? [] : (content.endsWith('\n') ? content.slice(0, -1).split('\n') : content.split('\n'))
   const hunkSize = lines.length
   const oldPath = /["\\\r\n\t]/.test(relativePath) ? JSON.stringify(`a/${relativePath}`) : `a/${relativePath}`
@@ -223,6 +226,7 @@ export function buildNewFileDiff(relativePath: string, content: string): string 
     `diff --git ${oldPath} ${newPath}`,
     'new file mode 100644',
     'index 0000000..0000000',
+    ...(binary ? [`Binary files /dev/null and ${newPath} differ`] : []),
     ...(hunkSize ? [
       '--- /dev/null',
       `+++ ${newPath}`,
@@ -411,7 +415,7 @@ export class FileService {
    */
   async getFileDiff(filePath?: string): Promise<string> {
     try {
-      const args = ['diff', '--no-ext-diff', '--no-textconv', '--no-color', '--src-prefix=a/', '--dst-prefix=b/']
+      const args = ['-c', 'core.quotepath=false', 'diff', '--no-ext-diff', '--no-textconv', '--no-color', '--src-prefix=a/', '--dst-prefix=b/']
       args.push('--', filePath ?? '.')
       const { stdout } = await execFileAsync('git', args, {
         cwd: this.workspacePath,
@@ -495,19 +499,24 @@ export class FileService {
 
   /** Untracked files inside the workspace, as new-file patches with repository-root paths. */
   private async getUntrackedFileDiff(filePath?: string): Promise<string> {
-    const [statusMap, prefix] = await Promise.all([this.getGitStatus(), this.getGitPrefix()])
-    const untrackedPaths = [...statusMap.entries()]
-      .filter(([, status]) => status.index === '?' && status.worktree === '?')
-      .map(([path]) => ({ path, relativePath: workspaceRelativeGitPath(path, prefix) }))
-      .filter(({ relativePath }) => !relativePath.startsWith('../') && (!filePath || relativePath === filePath))
+    const [{ stdout }, prefix] = await Promise.all([
+      execFileAsync('git', ['ls-files', '--others', '--exclude-standard', '-z', '--', filePath ?? '.'], {
+        cwd: this.workspacePath,
+        timeout: 10_000,
+        maxBuffer: GIT_OUTPUT_MAX_BUFFER_BYTES,
+      }),
+      this.getGitPrefix(),
+    ])
+    const untrackedPaths = stdout.split('\0').filter((path) => path && !path.startsWith('../'))
+      .map((relativePath) => ({ path: prefix + relativePath, relativePath }))
 
     const diffs: string[] = []
     for (const { path, relativePath } of untrackedPaths) {
       try {
-        const content = await readFile(join(this.workspacePath, relativePath), 'utf-8')
+        const content = await readFile(join(this.workspacePath, relativePath))
         diffs.push(buildNewFileDiff(path, content))
-      } catch {
-        // Skip unreadable or binary-like untracked files.
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
       }
     }
 
@@ -520,7 +529,7 @@ export class FileService {
    */
   async getStagedDiff(filePath?: string): Promise<string> {
     try {
-      const args = ['diff', '--cached', '--', filePath ?? '.']
+      const args = ['-c', 'core.quotepath=false', 'diff', '--cached', '--', filePath ?? '.']
       const { stdout } = await execFileAsync('git', args, {
         cwd: this.workspacePath,
         timeout: 10_000,

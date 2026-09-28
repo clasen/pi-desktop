@@ -24,17 +24,20 @@ function fileKey(path: string, workspacePath: string): string {
  * Filters whole-file Git diffs, not individual edits owned by the session.
  * Diff paths start from the repository root; `gitPrefix` places the workspace
  * inside it, while tool paths are workspace-relative or absolute.
+ * Observed paths are workspace-relative snapshots; history remains direct
+ * evidence for edit/write calls from turns predating the recorder.
  */
 export function filterSessionDiffFiles<T extends DiffPaths>(
   files: readonly T[],
   messages: readonly DisplayMessage[],
   workspacePath: string,
   gitPrefix: string,
+  observedPaths: readonly string[] = [],
 ): T[] {
   const failedCalls = new Set(messages
     .filter((message) => message.role === 'toolResult' && message.isError)
     .map((message) => message.toolCallId))
-  const touched = new Set<string>()
+  const touched = new Set(observedPaths.map((path) => fileKey(path, workspacePath)))
   for (const message of messages) {
     if (message.role !== 'assistant') continue
     for (const call of message.toolCalls ?? []) {

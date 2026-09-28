@@ -296,6 +296,7 @@ interface PiDesktopAPI {
     write(path: string, content: string): Promise<{ ok: boolean }>
     getDiff(filePath?: string): Promise<string>
     getStagedDiff(filePath?: string): Promise<string>
+    getSessionChangePaths(runtimeId: string): Promise<string[]>
     discardDiff(workspaceId: string, patches: string[]): Promise<void>
     /**
      * Declare whether a live files panel consumes file-change events. The
@@ -588,6 +589,7 @@ const api: PiDesktopAPI = {
     readAttachment: (path) => ipcRenderer.invoke(IPC_CHANNELS.FILE_READ_ATTACHMENT, path),
     write: (path, content) => ipcRenderer.invoke(IPC_CHANNELS.FILE_WRITE, path, content),
     getDiff: (filePath) => ipcRenderer.invoke(IPC_CHANNELS.FILE_DIFF, filePath),
+    getSessionChangePaths: (runtimeId) => ipcRenderer.invoke(IPC_CHANNELS.FILE_SESSION_CHANGE_PATHS, runtimeId),
     getStagedDiff: (filePath) => ipcRenderer.invoke(IPC_CHANNELS.FILE_STAGED_DIFF, filePath),
     discardDiff: (workspaceId, patches) => ipcRenderer.invoke(IPC_CHANNELS.FILE_DISCARD_DIFF, workspaceId, patches),
     setWatchDemand: (demanded) => ipcRenderer.invoke(IPC_CHANNELS.FILE_WATCH_DEMAND, demanded),

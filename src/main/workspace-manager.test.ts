@@ -77,7 +77,7 @@ async function withManager(fn: (mgr: WorkspaceManager) => Promise<void>): Promis
   try {
     await fn(mgr)
   } finally {
-    mgr.stopAll()
+    await mgr.stopAll()
   }
 }
 
@@ -863,6 +863,119 @@ test('removing the watched workspace migrates the watcher while demanded', async
       'removal must move the watcher to the promoted workspace'
     )
   })
+})
+
+test('session changes follow the originating runtime, await agent end, and survive reopening', async () => {
+  await freshDataDir()
+  const repo = await project()
+  await writeFile(join(repo, 'code.ts'), 'original\n')
+  gitRepo(repo)
+  const sessionPath = join(repo, '..', 'tracked-session.jsonl')
+  let workspaceId = ''
+  await withManager(async (mgr) => {
+    const workspace = await mgr.createWorkspace('Tracked', repo)
+    workspaceId = workspace.id
+    const runtime = await mgr.activateSession(workspace.id, sessionPath)
+    const manager = mgr.getActivePiManager()!
+    fakePiProcess(manager, 123)
+    manager.sendCommand = async () => {
+      manager.emit('agent_start')
+      await writeFile(join(repo, 'copied.png'), Buffer.from([0, 255, 137]))
+      await writeFile(join(repo, 'code.ts'), 'modified by shell\n')
+      return { type: 'response', command: 'prompt', success: true }
+    }
+    await mgr.sendTrackedCommand(manager, { type: 'prompt', message: 'copy image and update code' })
+    assert.deepEqual(await mgr.getSessionChangePaths(runtime.runtimeId), [], 'wait for the turn to end')
+    const other = await mgr.createNewSessionRuntime(workspace.id)
+    manager.emit('agent_end')
+    assert.deepEqual(await mgr.getSessionChangePaths(runtime.runtimeId), ['code.ts', 'copied.png'])
+    assert.deepEqual(await mgr.getSessionChangePaths(other.runtimeId), [])
+  })
+  await withManager(async (mgr) => {
+    const reopened = await mgr.activateSession(workspaceId, sessionPath)
+    assert.deepEqual(await mgr.getSessionChangePaths(reopened.runtimeId), ['code.ts', 'copied.png'])
+  })
+})
+
+test('records partial changes on command failure, cancellation and process exit', async () => {
+  await freshDataDir()
+  const repo = await project()
+  await writeFile(join(repo, 'code.ts'), 'original\n')
+  gitRepo(repo)
+  await withManager(async (mgr) => {
+    const workspace = await mgr.createWorkspace('Tracked', repo)
+    for (const ending of ['failure', 'cancel', 'exit'] as const) {
+      const runtime = await mgr.activateSession(workspace.id, join(repo, '..', `${ending}.jsonl`))
+      const manager = mgr.getActivePiManager()!
+      fakePiProcess(manager, 123)
+      mgr.setSessionRuntimeActivity(runtime.runtimeId, 'working') // Task launcher reserves before agent_start.
+      manager.sendCommand = async () => {
+        if (ending !== 'failure') manager.emit('agent_start')
+        await writeFile(join(repo, `${ending}.png`), Buffer.from([0, 255]))
+        if (ending === 'failure') throw new Error('failed after writing')
+        return { type: 'response', command: 'prompt', success: true }
+      }
+      const command = mgr.sendCommandToSessionRuntime(runtime.runtimeId, { type: 'prompt', message: ending })
+      if (ending === 'failure') await assert.rejects(command, /failed after writing/)
+      else {
+        await command
+        if (ending === 'cancel') mgr.stopSessionRuntime(runtime.runtimeId)
+        else manager.emit('exit')
+      }
+      assert.deepEqual(await mgr.getSessionChangePaths(runtime.runtimeId), [`${ending}.png`])
+    }
+  })
+})
+
+test('explicit shell commands record changes even without agent lifecycle events', async () => {
+  await freshDataDir()
+  const repo = await project()
+  await writeFile(join(repo, 'code.ts'), 'original\n')
+  gitRepo(repo)
+  await withManager(async (mgr) => {
+    const workspace = await mgr.createWorkspace('Tracked', repo)
+    const runtime = await mgr.activateSession(workspace.id, join(repo, '..', 'shell.jsonl'))
+    const manager = mgr.getActivePiManager()!
+    fakePiProcess(manager, 123)
+    manager.sendCommand = async () => {
+      await writeFile(join(repo, 'shell.png'), Buffer.from([0, 255]))
+      return { type: 'response', command: 'bash', success: true }
+    }
+    await mgr.sendTrackedCommand(manager, { type: 'bash', command: 'copy image' })
+    assert.deepEqual(await mgr.getSessionChangePaths(runtime.runtimeId), ['shell.png'])
+    reportsSessionFile(manager, join(repo, '..', 'different.jsonl'), 'different')
+    await mgr.refreshSessionRuntime(runtime.runtimeId)
+    assert.deepEqual(await mgr.getSessionChangePaths(runtime.runtimeId), [], 'rebinding the same runtime must not leak paths')
+  })
+})
+
+test('closing a runtime and quitting drain pending session recordings', async () => {
+  await freshDataDir()
+  const repo = await project()
+  await writeFile(join(repo, 'code.ts'), 'original\n')
+  gitRepo(repo)
+  const mgr = new WorkspaceManager()
+  await mgr.initialize()
+  const workspace = await mgr.createWorkspace('Tracked', repo)
+  for (const ending of ['close', 'quit'] as const) {
+    const sessionPath = join(repo, '..', `${ending}.jsonl`)
+    const runtime = await mgr.activateSession(workspace.id, sessionPath)
+    const manager = mgr.getActivePiManager()!
+    fakePiProcess(manager, 123)
+    manager.sendCommand = async () => {
+      manager.emit('agent_start')
+      await writeFile(join(repo, `${ending}.png`), Buffer.from([0, 255]))
+      return { type: 'response', command: 'prompt', success: true }
+    }
+    await mgr.sendTrackedCommand(manager, { type: 'prompt', message: ending })
+    if (ending === 'close') await mgr.closeSessionRuntime(runtime.runtimeId)
+    else await mgr.stopAll()
+    const reloaded = new WorkspaceManager()
+    await reloaded.initialize()
+    const reopened = await reloaded.activateSession(workspace.id, sessionPath)
+    assert.deepEqual(await reloaded.getSessionChangePaths(reopened.runtimeId), [`${ending}.png`])
+    await reloaded.stopAll()
+  }
 })
 
 test('stopAll stops the watcher', async () => {

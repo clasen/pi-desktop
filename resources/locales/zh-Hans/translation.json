@@ -434,6 +434,7 @@
     }
   },
   "diff": {
+    "binaryFile": "二进制文件 — 使用“打开文件”预览支持的图片。",
     "closeAriaLabel": "关闭差异查看器",
     "deletedFileBadge": "已删除",
     "discard": {
@@ -459,7 +460,7 @@
     "openFile": "打开文件",
     "refreshAriaLabel": "刷新差异",
     "sessionFilter": {
-      "description": "仅显示此聊天中 edit/write 调用涉及的文件。完整文件差异可能包含其他会话的更改，也可能遗漏 Shell 和子代理的更改。关闭筛选可查看整个项目。推送操作始终针对整个分支。",
+      "description": "显示在此会话运行期间检测到更改的文件，以及历史 edit/write 调用涉及的文件。包括此应用记录的 Shell、子代理和二进制文件更改。完整文件差异可能包含并发或已有的编辑；请使用独立工作树进行隔离。此前未记录的 Shell 更改无法恢复。关闭筛选可查看整个项目。推送操作针对整个分支。",
       "label": "此会话涉及的文件",
       "noMatches": "没有与此会话匹配的更改"
     },

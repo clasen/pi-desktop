@@ -3,6 +3,7 @@ import { readFile, writeFile, mkdir, rename, copyFile } from 'fs/promises'
 import { existsSync } from 'fs'
 import { PiRpcManager } from './pi-rpc-manager'
 import { FileService } from './file-service'
+import { SessionChanges } from './session-changes'
 import type {
   FileChangeEvent,
   PiStartOptions,
@@ -107,6 +108,8 @@ interface SessionRuntimeEntry {
    * isDisposableSessionFile.
    */
   appCreated: boolean
+  turnRunning: boolean
+  changes?: { sessionPath: string; workspacePath: string; tracker: SessionChanges }
 }
 
 /**
@@ -373,6 +376,10 @@ export class WorkspaceManager {
       if (entry.info.status === 'running' && entry.info.activity === 'failed') {
         entry.info = { ...entry.info, activity: null }
       }
+      if (entry.info.status === 'stopped' || entry.info.status === 'error') {
+        entry.turnRunning = false
+        void this.finishSessionChanges(entry)
+      }
       this.emitSessionRuntime(entry)
     })
     // Same refresh for a startup-phase flip, which changes getStatus() output
@@ -381,8 +388,15 @@ export class WorkspaceManager {
       entry.info = { ...entry.info, ...manager.getStatus() }
       this.emitSessionRuntime(entry)
     })
-    manager.on('agent_start', () => this.emitRuntimeActivity(entry, 'working'))
-    manager.on('agent_end', () => this.emitRuntimeActivity(entry, 'completed'))
+    manager.on('agent_start', () => {
+      entry.turnRunning = true
+      this.emitRuntimeActivity(entry, 'working')
+    })
+    manager.on('agent_end', () => {
+      entry.turnRunning = false
+      void this.finishSessionChanges(entry)
+      this.emitRuntimeActivity(entry, 'completed')
+    })
     manager.on('extension_ui_request', (event: { method?: string }) => {
       if (event.method === 'select' || event.method === 'confirm' || event.method === 'input' || event.method === 'editor') {
         this.emitRuntimeActivity(entry, 'needs-approval')
@@ -392,8 +406,35 @@ export class WorkspaceManager {
       // PiRpcManager only emits exit for an unexpected process death; deliberate
       // stop() detaches listeners first. Preserve a visible failure marker even
       // when the process died while idle.
+      entry.turnRunning = false
+      void this.finishSessionChanges(entry)
       this.emitRuntimeActivity(entry, 'failed')
     })
+  }
+
+  private sessionChangesFor(entry: SessionRuntimeEntry): SessionChanges | null {
+    const sessionPath = entry.info.sessionPath
+    const workspacePath = this.workspaces.find((workspace) => workspace.id === entry.info.workspaceId)?.path
+    if (!sessionPath || !workspacePath) return null
+    if (entry.changes?.sessionPath !== sessionPath || entry.changes.workspacePath !== workspacePath) {
+      entry.changes = {
+        sessionPath, workspacePath,
+        tracker: new SessionChanges(workspacePath, sessionPath, getGuiDataPath('session-changes')),
+      }
+    }
+    return entry.changes.tracker
+  }
+
+  private async finishSessionChanges(entry: SessionRuntimeEntry): Promise<void> {
+    await entry.changes?.tracker.finish().catch((error) => {
+      appLog.warn('session-diff', 'Failed to record session file changes', error)
+    })
+  }
+
+  async getSessionChangePaths(runtimeId: string): Promise<string[]> {
+    const entry = this.sessionRuntimes.get(runtimeId)
+    if (!entry) throw new Error(t('errors.session.runtimeNotFound', { runtimeId }))
+    return this.sessionChangesFor(entry)?.getPaths() ?? []
   }
 
   private createSessionRuntime(workspaceId: string, sessionPath: string | null): SessionRuntimeEntry {
@@ -412,6 +453,7 @@ export class WorkspaceManager {
       // spawn for it. A tab opened ON a file adopts a conversation that was
       // already there, which this app never gets to discard.
       appCreated: sessionPath === null,
+      turnRunning: false,
       info: {
         runtimeId,
         workspaceId,
@@ -668,6 +710,7 @@ export class WorkspaceManager {
 
     entry.info = { ...entry.info, activity: null }
     entry.manager.stop()
+    await this.finishSessionChanges(entry)
     if (sessionPath) this.runtimeBySessionPath.delete(pathGroupKey(sessionPath))
     this.sessionRuntimes.delete(runtimeId)
 
@@ -698,11 +741,35 @@ export class WorkspaceManager {
     }
   }
 
-  sendCommandToSessionRuntime(runtimeId: string, command: Record<string, unknown>): Promise<unknown> {
+  async sendCommandToSessionRuntime(runtimeId: string, command: Record<string, unknown>): Promise<unknown> {
     const entry = this.sessionRuntimes.get(runtimeId)
-    if (!entry) return Promise.reject(new Error(t('errors.session.runtimeNotFound', { runtimeId })))
+    if (!entry) throw new Error(t('errors.session.runtimeNotFound', { runtimeId }))
     this.touchRuntime(entry)
-    return entry.manager.sendCommand(command)
+    const tracksChanges = ['prompt', 'steer', 'follow_up', 'bash'].includes(String(command.type))
+    if (!tracksChanges) return entry.manager.sendCommand(command)
+    if (!entry.info.sessionPath) await this.refreshSessionRuntime(runtimeId)
+    const changes = this.sessionChangesFor(entry)
+    if (!changes) throw new Error('Session must be bound before tracking file changes')
+    const turn = await changes.begin()
+    try {
+      const response = await entry.manager.sendCommand(command)
+      // Extension commands and explicit shell commands may not emit agent_end.
+      if (!entry.turnRunning) await changes.finish(turn)
+      return response
+    } catch (error) {
+      if (!entry.turnRunning) {
+        await changes.finish(turn).catch((trackingError) => {
+          appLog.warn('session-diff', 'Failed to record session file changes', trackingError)
+        })
+      }
+      throw error
+    }
+  }
+
+  sendTrackedCommand(manager: PiRpcManager, command: Record<string, unknown>): Promise<unknown> {
+    const runtimeId = this.runtimeIdFor(manager)
+    if (!runtimeId) return Promise.reject(new Error('No session runtime for command'))
+    return this.sendCommandToSessionRuntime(runtimeId, command)
   }
 
   async initialize(): Promise<void> {
@@ -1131,9 +1198,13 @@ export class WorkspaceManager {
     else this.piManagers.get(workspaceId)?.stop()
   }
 
-  stopAll(): void {
+  async stopAll(): Promise<void> {
     for (const [, manager] of this.piManagers) manager.stop()
-    for (const [, entry] of this.sessionRuntimes) entry.manager.stop()
+    const recordings: Promise<void>[] = []
+    for (const [, entry] of this.sessionRuntimes) {
+      entry.manager.stop()
+      recordings.push(this.finishSessionChanges(entry))
+    }
     for (const [, fs] of this.fileServices) fs.stopWatching()
     this.watchingWorkspaceId = null
     this.fileWatchDemanded = false
@@ -1143,6 +1214,7 @@ export class WorkspaceManager {
     this.activeRuntimeByWorkspace.clear()
     this.activeRuntimeId = null
     this.fileServices.clear()
+    await Promise.all(recordings)
   }
 
   private async loadWorkspaces(): Promise<void> {

@@ -93,6 +93,14 @@ test('matches repository-root Git paths when the workspace is a monorepo subfold
   assert.deepEqual(filterSessionDiffFiles(files, [call('edit', { path: 'a.ts' })], '/repo/pkg/app', 'pkg/app/'), [])
 })
 
+test('observed paths include shell and partial failed changes without claiming unrelated files', () => {
+  const files = [diff('pkg/app/code.ts'), diff('pkg/app/image.png'), diff('pkg/app/unrelated.ts')]
+  const messages = [call('bash', { command: 'cp image.png pkg/app/image.png' }, { isError: true })]
+  assert.deepEqual(filterSessionDiffFiles(files, messages, '/repo/pkg/app', 'pkg/app/', ['image.png', 'code.ts']), files.slice(0, 2))
+  assert.deepEqual(filterSessionDiffFiles(files, messages, '/repo/pkg/app', 'pkg/app/', ['unrelated.ts']), [files[2]])
+  assert.deepEqual(filterSessionDiffFiles(files, messages, '/repo/pkg/app', 'pkg/app/', []), [])
+})
+
 test('normalizes Windows separators and folds case only on Windows', (t) => {
   const original = Object.getOwnPropertyDescriptor(globalThis, 'piDesktop')
   const bridge = { system: { platform: 'win32' } }

@@ -107,19 +107,19 @@ export function registerPiHandlers(ctx: IpcContext): void {
       if (options.images) cmd.images = options.images
       if (options.streamingBehavior) cmd.streamingBehavior = options.streamingBehavior
     }
-    return getActivePi().sendCommand(cmd)
+    return workspaceManager.sendTrackedCommand(getActivePi(), cmd)
   })
 
   ipcMain.handle(IPC_CHANNELS.PI_STEER, async (_event, message: unknown, images?: unknown) => {
     if (!isString(message)) throw new Error('message must be a string')
     const cmd: Record<string, unknown> = { type: 'steer', message }
     if (Array.isArray(images) && images.length > 0) cmd.images = images
-    return getActivePi().sendCommand(cmd)
+    return workspaceManager.sendTrackedCommand(getActivePi(), cmd)
   })
 
   ipcMain.handle(IPC_CHANNELS.PI_FOLLOW_UP, async (_event, message: unknown) => {
     if (!isString(message)) throw new Error('message must be a string')
-    return getActivePi().sendCommand({ type: 'follow_up', message })
+    return workspaceManager.sendTrackedCommand(getActivePi(), { type: 'follow_up', message })
   })
 
   ipcMain.handle(IPC_CHANNELS.PI_ABORT, async () => {
@@ -128,7 +128,7 @@ export function registerPiHandlers(ctx: IpcContext): void {
 
   ipcMain.handle(IPC_CHANNELS.PI_BASH, async (_event, command: unknown) => {
     if (!isString(command)) throw new Error('command must be a string')
-    return getActivePi().sendCommand({ type: 'bash', command })
+    return workspaceManager.sendTrackedCommand(getActivePi(), { type: 'bash', command })
   })
 
   ipcMain.handle(IPC_CHANNELS.PI_ABORT_BASH, async () => {
