@@ -213,7 +213,7 @@ export function DiffViewer({ onClose }: DiffViewerProps = {}): React.JSX.Element
             </button>
           </div>
         </div>
-        <div className="min-w-0 border-t border-border px-4 py-2">
+        <div className="flex min-h-8 min-w-0 flex-col justify-center border-t border-border px-4 py-0.5">
           <GitConveyorActions key={workspaceId} onChanged={loadDiff} selection={commitSelection} disabled={loading || discarding || !!loadError} shortcutActive={shortcutActive && !loading && !loadError}>
             <button
               type="button"
