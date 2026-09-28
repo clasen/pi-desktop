@@ -1,4 +1,4 @@
-export type SidebarSection = 'tools' | 'workspace' | 'activity'
+export type SidebarSection = 'sessions' | 'tools' | 'workspace' | 'activity'
 
 export function readSidebarSectionOpen(section: SidebarSection): boolean {
   try {

@@ -18,7 +18,7 @@ test('sidebar sections default to expanded and independently restore both toggle
     },
   })
 
-  const sections: SidebarSection[] = ['tools', 'workspace', 'activity']
+  const sections: SidebarSection[] = ['sessions', 'tools', 'workspace', 'activity']
   for (const section of sections) {
     assert.equal(readSidebarSectionOpen(section), true)
     saveSidebarSectionOpen(section, false)
@@ -39,7 +39,7 @@ test('unavailable storage does not break the sidebar', () => {
     },
   })
 
-  for (const section of ['tools', 'workspace', 'activity'] as const) {
+  for (const section of ['sessions', 'tools', 'workspace', 'activity'] as const) {
     assert.equal(readSidebarSectionOpen(section), true)
     assert.doesNotThrow(() => saveSidebarSectionOpen(section, false))
   }

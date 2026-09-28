@@ -83,6 +83,7 @@ export function Sidebar(): React.JSX.Element {
   const { show: showMenu, ContextMenuComponent: SessionMenu } = useContextMenu()
 
   const [archivedOpen, setArchivedOpen] = useState(false)
+  const [sessionsOpen, setSessionsOpen] = useState(() => readSidebarSectionOpen('sessions'))
   const [toolsOpen, setToolsOpen] = useState(() => readSidebarSectionOpen('tools'))
   const [workspaceOpen, setWorkspaceOpen] = useState(() => readSidebarSectionOpen('workspace'))
   const [activityOpen, setActivityOpen] = useState(() => readSidebarSectionOpen('activity'))
@@ -455,7 +456,48 @@ export function Sidebar(): React.JSX.Element {
       </div>
 
       {/* Navigation */}
-      <nav className="space-y-3 border-b border-border px-2 py-3">
+      <nav className={clsx('min-h-0 overflow-y-auto space-y-3 border-b border-border px-2 py-3', workflowPanelOpen && !globalWorkflowOpen ? 'shrink-0' : 'flex-1')}>
+        <div className={clsx(workflowPanelOpen && !globalWorkflowOpen && 'hidden')}>
+          <button
+            type="button"
+            className="flex w-full items-center justify-between px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-faint transition-colors hover:text-foreground focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-current"
+            aria-expanded={sessionsOpen}
+            aria-controls="sidebar-sessions"
+            onClick={() => {
+              saveSidebarSectionOpen('sessions', !sessionsOpen)
+              setSessionsOpen(!sessionsOpen)
+            }}
+          >
+            {t('sidebar.nav.sessions')}
+            <ChevronDown size={12} aria-hidden="true" className={clsx('transition-transform', !sessionsOpen && '-rotate-90')} />
+          </button>
+          <div id="sidebar-sessions" className={clsx(sessionsOpen ? 'mt-1' : 'hidden')}>
+            {activeWorkspace ? (
+              recentSessionsForWorkspace.length === 0 ? (
+                <div className="mx-2 mt-2 rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-faint">
+                  {t('sidebar.recentSessions.emptyInProject')}
+                  <button
+                    type="button"
+                    onClick={() => void startNewSession()}
+                    className="mt-1 block w-full text-accent-fg transition-colors hover:text-accent"
+                  >
+                    {t('sidebar.recentSessions.startOneNow')}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-0.5">
+                  {recentSessionsForWorkspace.map((session) => renderSessionRow(session))}
+                </div>
+              )
+            ) : recentGroups.length === 0 ? (
+              <div className="mx-2 mt-2 rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-faint">
+                {t('sidebar.recentSessions.emptyNoProject')}
+              </div>
+            ) : (
+              recentGroups.map(renderRecentGroup)
+            )}
+          </div>
+        </div>
         <div>
           <button
             type="button"
@@ -554,6 +596,64 @@ export function Sidebar(): React.JSX.Element {
             />
           </div>
         </div>
+        <div>
+          <button
+            type="button"
+            className="flex w-full items-center justify-between px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-faint transition-colors hover:text-foreground focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-current"
+            aria-expanded={toolsOpen}
+            aria-controls="sidebar-tools"
+            onClick={() => {
+              saveSidebarSectionOpen('tools', !toolsOpen)
+              setToolsOpen(!toolsOpen)
+            }}
+          >
+            {t('sidebar.tools.sectionLabel')}
+            <ChevronDown size={12} aria-hidden="true" className={clsx('transition-transform', !toolsOpen && '-rotate-90')} />
+          </button>
+          <div id="sidebar-tools" className={clsx('space-y-0.5', toolsOpen ? 'mt-1' : 'hidden')}>
+            <SidebarItem
+              icon={<Package size={14} />}
+              label={t('sidebar.tools.packages')}
+              active={toolViewShowing('packages')}
+              onClick={() => openToolView('packages')}
+            />
+            <SidebarItem
+              icon={<StickyNote size={14} />}
+              label={t('sidebar.tools.notes')}
+              active={toolViewShowing('notes')}
+              onClick={() => openToolView('notes')}
+            />
+            <SidebarItem
+              icon={<Sparkles size={14} />}
+              label={t('common.skills')}
+              active={toolViewShowing('skills')}
+              onClick={() => openToolView('skills')}
+            />
+            <SidebarItem
+              icon={<Stethoscope size={14} />}
+              label={t('sidebar.tools.diagnostics')}
+              active={toolViewShowing('diagnostics')}
+              onClick={() => openToolView('diagnostics')}
+            />
+            {/* Global workflow list lives here — "browse everything" territory —
+                so the Activity section stays scoped to the current project. */}
+            <SidebarItem
+              icon={<WorkflowIcon size={14} />}
+              label={t('sidebar.tools.allWorkflows')}
+              // Highlighted only when the global scope is open (never alongside
+              // the Activity entry, whose active state requires a workspace id).
+              active={globalWorkflowOpen}
+              onClick={() => openWorkflowRunsForWorkspace(null)}
+              title={t('sidebar.tools.allWorkflowsTitle')}
+            />
+            <SidebarItem
+              icon={<Settings size={14} />}
+              label={t('common.settings')}
+              active={toolViewShowing('settings')}
+              onClick={() => openToolView('settings')}
+            />
+          </div>
+        </div>
       </nav>
 
       {/* Project/session-scoped workflow runs dock here, in place of the recent
@@ -563,48 +663,6 @@ export function Sidebar(): React.JSX.Element {
           <WorkflowNavigator placement="sidebar" />
         </div>
       )}
-      {/* Recent sessions for the active project. Cross-project history stays in Sessions. */}
-      <div className={clsx('min-h-0 flex-1 overflow-y-auto px-2 py-3', workflowPanelOpen && !globalWorkflowOpen && 'hidden')}>
-        <div className="mb-1 flex items-center justify-between px-2">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-faint">
-            {t('sidebar.recentSessions.heading')}
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              setSessionsScope('all')
-              setCurrentView('sessions')
-            }}
-            className="text-[11px] text-muted transition-colors hover:text-accent-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus"
-          >
-            {t('sidebar.recentSessions.viewAll')}
-          </button>
-        </div>
-        {activeWorkspace ? (
-          recentSessionsForWorkspace.length === 0 ? (
-            <div className="mx-2 mt-2 rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-faint">
-              {t('sidebar.recentSessions.emptyInProject')}
-              <button
-                type="button"
-                onClick={() => void startNewSession()}
-                className="mt-1 block w-full text-accent-fg transition-colors hover:text-accent"
-              >
-                {t('sidebar.recentSessions.startOneNow')}
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-0.5">
-              {recentSessionsForWorkspace.map((session) => renderSessionRow(session))}
-            </div>
-          )
-        ) : recentGroups.length === 0 ? (
-          <div className="mx-2 mt-2 rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-faint">
-            {t('sidebar.recentSessions.emptyNoProject')}
-          </div>
-        ) : (
-          recentGroups.map(renderRecentGroup)
-        )}
-      </div>
 
       {/* Archived sessions (collapsible) */}
       {archivedList.length > 0 && (
@@ -629,71 +687,6 @@ export function Sidebar(): React.JSX.Element {
         </div>
       )}
 
-      {/* Secondary tools stay available without competing with project/session work. */}
-      <div className="shrink-0 border-t border-border px-2 py-2">
-        <button
-          type="button"
-          className="flex w-full items-center justify-between px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-faint transition-colors hover:text-foreground focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-current"
-          aria-expanded={toolsOpen}
-          aria-controls="sidebar-tools"
-          onClick={() => {
-            saveSidebarSectionOpen('tools', !toolsOpen)
-            setToolsOpen(!toolsOpen)
-          }}
-        >
-          {t('sidebar.tools.sectionLabel')}
-          <ChevronDown size={12} aria-hidden="true" className={clsx('transition-transform', !toolsOpen && '-rotate-90')} />
-        </button>
-        <div id="sidebar-tools" className={clsx('grid-cols-2 gap-0.5', toolsOpen ? 'mt-1 grid' : 'hidden')}>
-          <SidebarItem
-            compact
-            icon={<Package size={13} />}
-            label={t('sidebar.tools.packages')}
-            active={toolViewShowing('packages')}
-            onClick={() => openToolView('packages')}
-          />
-          <SidebarItem
-            compact
-            icon={<StickyNote size={13} />}
-            label={t('sidebar.tools.notes')}
-            active={toolViewShowing('notes')}
-            onClick={() => openToolView('notes')}
-          />
-          <SidebarItem
-            compact
-            icon={<Sparkles size={13} />}
-            label={t('common.skills')}
-            active={toolViewShowing('skills')}
-            onClick={() => openToolView('skills')}
-          />
-          <SidebarItem
-            compact
-            icon={<Stethoscope size={13} />}
-            label={t('sidebar.tools.diagnostics')}
-            active={toolViewShowing('diagnostics')}
-            onClick={() => openToolView('diagnostics')}
-          />
-          {/* Global workflow list lives here — "browse everything" territory —
-              so the Activity section stays scoped to the current project. */}
-          <SidebarItem
-            compact
-            icon={<WorkflowIcon size={13} />}
-            label={t('sidebar.tools.allWorkflows')}
-            // Highlighted only when the global scope is open (never alongside
-            // the Activity entry, whose active state requires a workspace id).
-            active={globalWorkflowOpen}
-            onClick={() => openWorkflowRunsForWorkspace(null)}
-            title={t('sidebar.tools.allWorkflowsTitle')}
-          />
-          <SidebarItem
-            compact
-            icon={<Settings size={13} />}
-            label={t('common.settings')}
-            active={toolViewShowing('settings')}
-            onClick={() => openToolView('settings')}
-          />
-        </div>
-      </div>
       {SessionMenu}
     </aside>
     <ResizeHandle
@@ -935,14 +928,12 @@ function SidebarItem({
   label,
   active,
   onClick,
-  compact = false,
   title,
 }: {
   icon: React.ReactNode
   label: string
   active: boolean
   onClick: () => void
-  compact?: boolean
   title?: string
 }): React.JSX.Element {
   return (
@@ -952,7 +943,7 @@ function SidebarItem({
       title={title}
       className={clsx(
         'flex w-full items-center gap-2 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus',
-        compact ? 'px-2 py-1.5 text-xs' : 'px-3 py-2 text-sm',
+        'px-3 py-2 text-sm',
         active
           ? 'bg-card text-primary'
           : 'text-muted hover:bg-highlight hover:text-secondary'
