@@ -52,18 +52,27 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            eb_args: '--linux AppImage'
+            eb_args: '--linux AppImage --x64'
             artifacts: |
               release/*.AppImage
+              release/*.sha256
           - os: windows-latest
-            eb_args: '--win nsis portable'
+            eb_args: '--win nsis portable --x64'
             artifacts: |
               release/*.exe
-          - os: macos-latest
-            eb_args: '--mac dmg zip'
+              release/*.sha256
+          - os: macos-15
+            eb_args: '--mac dmg zip --arm64'
             artifacts: |
               release/*.dmg
               release/*.zip
+              release/*.sha256
+          - os: macos-15-intel
+            eb_args: '--mac dmg zip --x64'
+            artifacts: |
+              release/*.dmg
+              release/*.zip
+              release/*.sha256
 
     steps:
       - name: Checkout
@@ -72,8 +81,11 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
+
+      - name: Test bootstrap installers
+        run: node --test scripts/install.test.js
 
       # Runs postinstall, which rebuilds native modules (node-pty) for Electron.
       # NOTE: confirmed (2026-06-08) that the windows-latest runner's bundled
@@ -97,6 +109,9 @@ jobs:
         env:
           # No certificates in alpha — don't attempt to sign the macOS app.
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Generate installer checksums
+        run: node scripts/release-checksums.js
 
       - name: Upload installers
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

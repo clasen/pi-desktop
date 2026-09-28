@@ -1,162 +1,132 @@
 #!/bin/bash
-# Pi Desktop — Quick Install Script
-# Usage: curl -fsSL https://raw.githubusercontent.com/FaqFirebase/pi-desktop/master/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/clasen/pi-desktop/master/install.sh | bash
 
-set -e
+set -euo pipefail
 
-REPO="FaqFirebase/pi-desktop"
-RELEASES_PAGE="https://github.com/$REPO/releases"
-RELEASES_API="https://api.github.com/repos/$REPO/releases"
-BINARY_NAME="pi-desktop"
-INSTALL_DIR="${HOME}/.local/bin"
-BINARY_MODE=755
-# How many recent releases the asset lookup scans. More than one, so a release
-# whose installers are still uploading mid-CI-run does not hide the newest
-# release that actually carries them.
-RELEASE_SCAN_COUNT=10
+main() {
+  local repo="clasen/pi-desktop"
+  local releases="https://github.com/$repo/releases"
+  local api="https://api.github.com/repos/$repo/releases?per_page=10"
+  local platform arch suffix urls url download name expected actual stage="" backup="" destination=""
+  local connect_timeout=15 download_timeout=600
 
-# $1: electron-builder platform target (linux|mac|win), i.e. the package:<target>
-# npm script to run.
-print_build_from_source() {
-  echo ""
-  echo "Or build from source:"
-  echo "  git clone https://github.com/$REPO.git"
-  echo "  cd pi-desktop"
-  echo "  npm install && npm run package:$1"
+  fail() { printf 'Error: %s\n' "$*" >&2; exit 1; }
+  confirm() {
+    local answer
+    # stdin contains the script when invoked through curl | bash.
+    if ! { printf '%s [y/N] ' "$*" > /dev/tty; IFS= read -r answer < /dev/tty; } 2>/dev/null; then
+      return 1
+    fi
+    [[ "$answer" = y || "$answer" = Y ]]
+  }
+  download_file() {
+    curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+      --connect-timeout "$connect_timeout" --max-time "$download_timeout" "$1" -o "$2" \
+      || fail "Download failed: $1. Check your connection and available disk space, then retry."
+  }
+  cleanup() {
+    if [ -n "$backup" ] && [ -e "$backup" ] && [ ! -e "$destination" ]; then
+      mv "$backup" "$destination" || printf 'Restore the previous app from %s\n' "$backup" >&2
+    fi
+    # Do not delete a backup if restoring it failed.
+    if [ -n "$stage" ] && { [ -z "$backup" ] || [ ! -e "$backup" ]; }; then
+      rm -rf "$stage"
+    fi
+  }
+  trap cleanup EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+
+  command -v curl >/dev/null || fail 'curl is required. Install it using your system package manager.'
+  case "$(uname -s)" in
+    Linux) platform=linux ;;
+    Darwin) platform=mac ;;
+    MINGW*|MSYS*|CYGWIN*)
+      fail 'On Windows, run this in PowerShell: curl.exe -fsSL https://raw.githubusercontent.com/clasen/pi-desktop/master/install.ps1 | Out-String | Invoke-Expression' ;;
+    *) fail 'Unsupported operating system. See https://github.com/clasen/pi-desktop/releases.' ;;
+  esac
+  arch="$(uname -m)"
+  # A shell under Rosetta reports x86_64 on an Apple Silicon Mac.
+  if [ "$platform" = mac ] && [ "$(sysctl -in sysctl.proc_translated 2>/dev/null || true)" = 1 ]; then
+    arch=arm64
+  fi
+  case "$platform-$arch" in
+    linux-x86_64) suffix='linux-x86_64.AppImage' ;;
+    mac-arm64) suffix='mac-arm64.zip' ;;
+    mac-x86_64) suffix='mac-x64.zip' ;;
+    *) fail "No prebuilt installer for $platform-$arch. See $releases." ;;
+  esac
+  if [ "$platform" = mac ]; then
+    command -v ditto >/dev/null || fail 'The macOS ditto utility is missing.'
+    command -v shasum >/dev/null || fail 'The macOS shasum utility is missing.'
+    destination="$HOME/Applications/Pi Desktop.app"
+  else
+    command -v sha256sum >/dev/null || fail 'sha256sum is required (provided by coreutils).'
+    destination="$HOME/.local/share/pi-desktop/Pi-Desktop.AppImage"
+  fi
+
+  printf 'Pi Desktop installer: %s-%s\nClose Pi Desktop before updating.\n' "$platform" "$arch"
+  mkdir -p "$(dirname "$destination")"
+  stage="$(mktemp -d "$(dirname "$destination")/.pi-desktop-install.XXXXXX")"
+  download_file "$api" "$stage/releases.json"
+  # Match only this repository's asset URLs. The public API includes prereleases,
+  # newest first; checksums are downloaded from the very same release as the app.
+  urls="$(grep -Eo '"browser_download_url"[[:space:]]*:[[:space:]]*"https://github.com/'"$repo"'/releases/download/[A-Za-z0-9._-]+/Pi-Desktop-[A-Za-z0-9.+_-]+"' "$stage/releases.json" | cut -d '"' -f 4 || true)"
+  # Use a literal suffix comparison, not a regex containing the filename's dots.
+  download=""
+  while IFS= read -r url; do
+    case "$url" in *-"$suffix") download="$url"; break ;; esac
+  done <<< "$urls"
+  [ -n "$download" ] || fail "No published $suffix installer found. Publish a version tag in $repo and wait for the Build workflow: $releases."
+  name="${download##*/}"
+  download_file "$download.sha256" "$stage/checksum"
+  expected="$(awk 'NR == 1 {print $1}' "$stage/checksum")"
+  [[ "$expected" =~ ^[a-fA-F0-9]{64}$ ]] || fail 'Invalid SHA-256 checksum. Nothing was installed.'
+  download_file "$download" "$stage/$name"
+  if [ "$platform" = mac ]; then
+    actual="$(shasum -a 256 "$stage/$name")"
+  else
+    actual="$(sha256sum "$stage/$name")"
+  fi
+  actual="${actual%% *}"
+  [ "$(printf '%s' "$expected" | tr 'A-F' 'a-f')" = "$actual" ] || fail 'SHA-256 mismatch. Nothing was installed; download again or report the release.'
+
+  if [ "$platform" = mac ]; then
+    ditto -x -k "$stage/$name" "$stage/unpacked" || fail 'Could not unpack the app. Check available disk space.'
+    [ -d "$stage/unpacked/Pi Desktop.app/Contents" ] || fail 'The archive does not contain Pi Desktop.app.'
+    if [ -e "$destination" ]; then
+      backup="$stage/previous.app"
+      mv "$destination" "$backup" || fail 'Could not move the previous app. Check permissions and close Pi Desktop.'
+    fi
+    mv "$stage/unpacked/Pi Desktop.app" "$destination" || fail 'Could not install the app. Restoring the previous version.'
+    if [ -n "$backup" ]; then rm -rf "$backup"; backup=""; fi
+    printf 'Installed: %s\nOpen it from Finder. Alpha builds are unsigned; macOS may require approval in Privacy & Security.\n' "$destination"
+  else
+    mkdir -p "$HOME/.local/bin"
+    # Extraction mode avoids requiring FUSE or installing system libraries as root.
+    printf '%s\n' '#!/bin/sh' 'exec env APPIMAGE_EXTRACT_AND_RUN=1 "$HOME/.local/share/pi-desktop/Pi-Desktop.AppImage" "$@"' > "$stage/launcher"
+    chmod 755 "$stage/$name" "$stage/launcher"
+    mv -f "$stage/$name" "$destination"
+    mv -f "$stage/launcher" "$HOME/.local/bin/pi-desktop"
+    printf 'Installed: %s\nRun: %s/.local/bin/pi-desktop\n' "$destination" "$HOME"
+    case ":$PATH:" in
+      *":$HOME/.local/bin:"*) ;;
+      *) printf 'To add the launcher to PATH, add this to your shell profile:\n  export PATH="$HOME/.local/bin:$PATH"\n' ;;
+    esac
+  fi
+
+  if ! command -v pi >/dev/null && ! command -v omp >/dev/null; then
+    printf '\nPi or OMP is required to run an agent. Neither was found on PATH.\n'
+    if confirm 'Download and run the official Pi installer from https://pi.dev/install.sh?'; then
+      download_file 'https://pi.dev/install.sh' "$stage/install-pi.sh"
+      sh "$stage/install-pi.sh" || fail 'Pi installation failed. Pi Desktop is installed; retry Pi installation separately.'
+      printf 'Pi installer finished. Open a new terminal so PATH changes take effect.\n'
+    else
+      printf 'Skipped Pi installation. Install Pi/OMP later or select an existing executable in Settings > Agent Configuration.\n'
+    fi
+  fi
+  cleanup
+  trap - EXIT
 }
 
-echo "╔═══════════════════════════════════════╗"
-echo "║       Pi Desktop — Installer          ║"
-echo "╚═══════════════════════════════════════╝"
-echo ""
-
-# Detect platform
-OS="$(uname -s)"
-ARCH="$(uname -m)"
-
-case "$OS" in
-  Linux*)
-    PLATFORM="linux"
-    # CI packages Linux on an x64 runner only, so x86_64 is the sole
-    # architecture with a published AppImage. Bail out here, before Pi is
-    # installed as a side effect below, rather than after.
-    if [ "$ARCH" != "x86_64" ]; then
-      echo "Error: No Pi Desktop build is published for $PLATFORM-$ARCH."
-      echo "Prebuilt Linux installers are x86_64 only."
-      print_build_from_source "$PLATFORM"
-      exit 1
-    fi
-    # electron-builder names Linux AppImage artifacts with "x86_64", not "x64"
-    ARCH_NAME="x86_64"
-    ;;
-  Darwin*)
-    PLATFORM="mac"
-    if [ "$ARCH" = "x86_64" ]; then
-      ARCH_NAME="x64"
-    elif [ "$ARCH" = "arm64" ]; then
-      ARCH_NAME="arm64"
-    fi
-    ;;
-  MINGW*|MSYS*|CYGWIN*)
-    PLATFORM="win"
-    ARCH_NAME="x64"
-    ;;
-  *)
-    echo "Error: Unsupported OS: $OS"
-    echo "Please download manually from: $RELEASES_PAGE"
-    exit 1
-    ;;
-esac
-
-echo "Platform: $PLATFORM-$ARCH_NAME"
-
-# Check for Pi dependency
-PI_PATH="$(command -v pi || true)"
-if [ -z "$PI_PATH" ]; then
-  echo ""
-  echo "⚠  Pi is not installed."
-  echo "   Installing Pi first..."
-  echo ""
-  curl -fsSL https://pi.dev/install.sh | sh
-  echo ""
-  PI_PATH="$(command -v pi || true)"
-fi
-
-if [ -n "$PI_PATH" ]; then
-  echo "✓ Pi found: $PI_PATH"
-else
-  # The Pi installer can put pi in a directory that this shell's PATH does not
-  # include yet. Pi Desktop locates Pi on its own, so this is not fatal.
-  echo "⚠  Pi is not on the PATH of this shell."
-  echo "   Open a new terminal, then run: pi --version"
-fi
-
-# Download the latest release artifact for this platform.
-# Pi Desktop is distributed as a packaged binary, not via npm — see MEMORY.md.
-if [ "$PLATFORM" = "linux" ]; then
-  echo ""
-  echo "Downloading AppImage..."
-
-  # Release assets are versioned (Pi-Desktop-<version>-<os>-<arch>.<ext>), so the
-  # URL must be resolved from the release's asset list. /releases/latest excludes
-  # pre-releases, so fall back to the newest releases when only pre-releases
-  # exist. The list endpoint returns them newest-first and the pipeline below
-  # takes the first matching asset in document order, so a release that has not
-  # finished uploading its installers is skipped rather than fatal.
-  RELEASE_JSON="$(curl -fsSL "$RELEASES_API/latest" 2>/dev/null \
-    || curl -fsSL "${RELEASES_API}?per_page=${RELEASE_SCAN_COUNT}" 2>/dev/null \
-    || true)"
-
-  if [ -z "$RELEASE_JSON" ]; then
-    echo "Error: Could not fetch release information from the GitHub API."
-    echo "Please download manually from: $RELEASES_PAGE"
-    exit 1
-  fi
-
-  DOWNLOAD_URL="$(printf '%s\n' "$RELEASE_JSON" \
-    | grep -o '"browser_download_url": *"[^"]*"' \
-    | grep -- "-${PLATFORM}-${ARCH_NAME}\.AppImage\"\$" \
-    | head -n 1 \
-    | sed 's/.*"\(https[^"]*\)".*/\1/')"
-
-  if [ -z "$DOWNLOAD_URL" ]; then
-    echo "Error: No ${PLATFORM}-${ARCH_NAME} AppImage found in the recent releases."
-    echo "Please download manually from: $RELEASES_PAGE"
-    exit 1
-  fi
-
-  mkdir -p "$INSTALL_DIR"
-  OUTPUT="$INSTALL_DIR/$BINARY_NAME"
-
-  # Download to a temporary file in the install directory, then rename it into
-  # place. A failed download cannot leave a broken binary, and the rename works
-  # while an older Pi Desktop is running.
-  DOWNLOAD_TMP="$(mktemp "$INSTALL_DIR/.$BINARY_NAME.XXXXXX")"
-  trap 'rm -f "$DOWNLOAD_TMP"' EXIT
-
-  echo "Downloading: $DOWNLOAD_URL"
-  curl -fL --progress-bar "$DOWNLOAD_URL" -o "$DOWNLOAD_TMP"
-  # mktemp creates the file owner-only, so set the full mode explicitly.
-  chmod "$BINARY_MODE" "$DOWNLOAD_TMP"
-  mv -f "$DOWNLOAD_TMP" "$OUTPUT"
-
-  if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
-    echo ""
-    echo "Add to your PATH:"
-    echo "  export PATH=\"$INSTALL_DIR:\$PATH\""
-    echo ""
-    echo "Add to ~/.bashrc or ~/.zshrc to make permanent."
-  fi
-
-  echo ""
-  echo "✓ Pi Desktop installed to $OUTPUT"
-  echo ""
-  echo "Run: $OUTPUT"
-  echo ""
-else
-  echo ""
-  echo "Automated install is currently Linux-only."
-  echo "Download the installer for $PLATFORM from: $RELEASES_PAGE"
-  print_build_from_source "$PLATFORM"
-  exit 1
-fi
+main "$@"

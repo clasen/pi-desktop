@@ -171,11 +171,33 @@ Which model to pick depends on your machine and language. Moonshine is small and
 
 ## Getting started
 
-You need Pi installed first:
+### Quick install (no compilation)
+
+**macOS / Linux:**
 
 ```bash
-npm install -g @earendil-works/pi-coding-agent
+curl -fsSL https://raw.githubusercontent.com/clasen/pi-desktop/master/install.sh | bash
 ```
+
+**Windows (PowerShell, not Command Prompt):**
+
+```powershell
+curl.exe -fsSL https://raw.githubusercontent.com/clasen/pi-desktop/master/install.ps1 | Out-String | Invoke-Expression
+```
+
+These commands execute a downloaded script. You can download and inspect it before running it instead. Close Pi Desktop before updating.
+
+The installer downloads a published build **from this fork**, including alpha releases, and verifies its SHA-256 checksum before installing. No Node.js, Python, or C++ compiler is required for the desktop app. If neither Pi nor OMP is on PATH, it asks before downloading and running Pi's official installer; declining leaves the desktop app installed so you can configure an existing engine later. Noninteractive Bash installs skip this optional step. The scripts do not disable Gatekeeper, SmartScreen, or PowerShell execution policies.
+
+- **Linux x86_64:** installs under `~/.local/share/pi-desktop` with a launcher at `~/.local/bin/pi-desktop`. The launcher uses AppImage extract-and-run mode, so FUSE is not required (it needs writable, executable temporary storage). Standard desktop system libraries are still required; this does not provision a headless/minimal Linux system.
+- **macOS Intel / Apple Silicon:** installs to `~/Applications/Pi Desktop.app` without administrator access. A failed app replacement restores the previous version.
+- **Windows x64:** opens the normal setup wizard and reports cancellation or failure. Additional architectures are rejected before installation.
+
+The scripts need a Release containing installers **and their `.sha256` files**; they do not compile the source if a release is missing. To publish your current fork, update `package.json` and `package-lock.json` to a new version, then push the matching `v<version>` tag. `.github/workflows/build.yml` builds all supported platforms and publishes an alpha prerelease. A manual **Actions → Build → Run workflow** run produces downloadable artifacts only, not a Release. SHA-256 detects corrupt downloads; it is not a code signature, and alpha builds remain unsigned.
+
+### Manual install
+
+Install [Pi](https://pi.dev) or [OMP](https://github.com/can1357/oh-my-pi) separately if needed, then select it in Settings → Agent Configuration.
 
 On Linux, grab the AppImage from [Releases](https://github.com/clasen/pi-desktop/releases):
 
@@ -186,7 +208,7 @@ chmod +x Pi-Desktop-*.AppImage
 
 ### macOS
 
-Download the `.dmg` (Apple Silicon / arm64) from [Releases](https://github.com/clasen/pi-desktop/releases), open it, and drag **Pi Desktop** to Applications.
+Download the `.dmg` for your architecture (Apple Silicon / arm64 or Intel / x64) from [Releases](https://github.com/clasen/pi-desktop/releases), open it, and drag **Pi Desktop** to Applications.
 
 Builds are **not yet signed or notarized**. Because the download is unsigned, macOS quarantines it, and on first launch Gatekeeper shows this dialog (this is macOS's message, not our advice):
 
