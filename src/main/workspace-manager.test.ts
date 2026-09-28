@@ -176,6 +176,75 @@ test('saveWorkspaces writes atomically (no leftover .tmp) and round-trips', asyn
   })
 })
 
+test('project colors stay unique across restarts, removal, and additions', async () => {
+  await freshDataDir()
+  const colors = new Map<string, string>()
+  let removedId = ''
+
+  await withManager(async (mgr) => {
+    for (let index = 0; index < 24; index++) {
+      const workspace = await mgr.createWorkspace(`Project ${index}`, await project())
+      colors.set(workspace.id, workspace.color)
+    }
+    assert.equal(new Set(colors.values()).size, colors.size)
+    removedId = mgr.getWorkspaces()[0].id
+  })
+
+  await withManager(async (mgr) => {
+    const added = await mgr.createWorkspace('After restart', await project())
+    assert.ok(!new Set(colors.values()).has(added.color))
+    colors.set(added.id, added.color)
+    await mgr.setActiveWorkspace(added.id)
+    await mgr.renameWorkspace(added.id, 'Renamed project')
+    await mgr.removeWorkspace(removedId)
+    colors.delete(removedId)
+  })
+
+  await withManager(async (mgr) => {
+    for (const workspace of mgr.getWorkspaces()) {
+      assert.equal(workspace.color, colors.get(workspace.id))
+    }
+    const added = await mgr.createWorkspace('After removal', await project())
+    assert.ok(!new Set(colors.values()).has(added.color))
+  })
+})
+
+test('loading repairs legacy and duplicate colors, persists them, and reserves valid identifiers', async () => {
+  await freshDataDir()
+  const cfg = getGuiDataPath('workspaces.json')
+  const initialColors = new Map<string, string>()
+  await withManager(async (mgr) => {
+    for (let index = 0; index < 4; index++) {
+      const workspace = await mgr.createWorkspace(`Project ${index}`, await project())
+      initialColors.set(workspace.id, workspace.color)
+    }
+  })
+  const saved = JSON.parse(await readFile(cfg, 'utf-8'))
+  saved.workspaces[0].color = '#3b82f6'
+  saved.workspaces[1].color = '#3b82f6'
+  saved.workspaces[2].color = saved.workspaces[3].color
+  await writeFile(cfg, JSON.stringify(saved), 'utf-8')
+
+  const repairedColors = new Map<string, string>()
+  await withManager(async (mgr) => {
+    const workspaces = mgr.getWorkspaces()
+    assert.equal(new Set(workspaces.map((workspace) => workspace.color)).size, workspaces.length)
+    assert.ok(workspaces.every((workspace) => workspace.color !== '#3b82f6'))
+    const retained = workspaces.find((workspace) => workspace.id === saved.workspaces[2].id)!
+    assert.equal(retained.color, initialColors.get(saved.workspaces[3].id))
+    for (const workspace of workspaces) repairedColors.set(workspace.id, workspace.color)
+    const persisted = JSON.parse(await readFile(cfg, 'utf-8'))
+    for (const workspace of persisted.workspaces) {
+      assert.equal(workspace.color, repairedColors.get(workspace.id))
+    }
+  })
+  await withManager(async (mgr) => {
+    for (const workspace of mgr.getWorkspaces()) {
+      assert.equal(workspace.color, repairedColors.get(workspace.id))
+    }
+  })
+})
+
 test('workspaceIdFor reverse-maps a manager to its owning workspace', async () => {
   await freshDataDir()
 

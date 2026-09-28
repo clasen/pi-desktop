@@ -776,6 +776,23 @@ function adoptMainSideActivation(
   }
 }
 
+function startEmptyChat(get: () => AppState & AppActions): void {
+  const gen = sessionLoadGeneration
+  // Let an explicit New Session / session pick in the same interaction win.
+  queueMicrotask(() => {
+    const state = get()
+    const workspaceId = state.activeWorkspace?.id
+    if (
+      gen !== sessionLoadGeneration || state.currentView !== 'chat' ||
+      !workspaceId || state.sessionLoading || state.sessionState ||
+      state.piStatus !== 'stopped' ||
+      Object.values(state.sessionRuntimes).some((runtime) =>
+        runtime.workspaceId === workspaceId && runtime.active)
+    ) return
+    void state.startPi({ continueSession: false })
+  })
+}
+
 function scheduleSessionListRefresh(get: () => AppState & AppActions): void {
   if (sessionListRefreshTimer) clearTimeout(sessionListRefreshTimer)
   sessionListRefreshTimer = setTimeout(() => {
@@ -1022,6 +1039,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     const workspaceId = get().activeWorkspace?.id
     const isCurrent = (): boolean => gen === sessionLoadGeneration && workspaceId === get().activeWorkspace?.id
 
+    set({ piStatus: 'starting', piStartupPhase: null, piError: null })
     try {
       const status = await window.piDesktop.pi.start(options as Record<string, unknown> | undefined)
       if (!isCurrent()) return
@@ -1112,9 +1130,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     }
     if (trimmed.startsWith('/workflows run ')) get().setWorkflowPanelOpen(true)
 
-    // Navigation never spawns Pi; the first prompt or model-picker open does.
-    // For a prompt, startPi applies the resume preference: a previously-used
-    // project continues its last conversation; a fresh one gets a new session.
+    // A stopped runtime still needs an explicit start before accepting a prompt.
     if (get().piStatus !== 'running') {
       await get().startPi()
       if (get().piStatus !== 'running') return
@@ -1961,7 +1977,10 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
   // ─── UI ───────────────────────────────────────────────────────────────
 
-  setCurrentView: (view) => set({ currentView: view }),
+  setCurrentView: (view) => {
+    set({ currentView: view })
+    if (view === 'chat') startEmptyChat(get)
+  },
   // Lifted into the store so the scope survives SessionPanel remounts (it
   // unmounts on every navigation) and so sidebar entry points can set it.
   setSessionsScope: (scope) => set({ sessionsScope: scope }),
@@ -2696,10 +2715,8 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     }
   },
 
-  // Instant navigation: committing the project pointer never spawns a
-  // process. A workspace with a live runtime shows that session right away
-  // (the process is already up — only history hydrates); anything else shows
-  // the empty new-session view immediately. Pi starts lazily on first prompt.
+  // Commit navigation immediately. Existing runtimes hydrate in the background;
+  // an empty chat starts its session without waiting for the first prompt.
   activateWorkspace: async (workspaceId, options) => {
     if (get().activeWorkspace?.id === workspaceId) return true
     if (!options?.skipDirtyConfirm && !(await get().confirmDiscardEditorChanges())) return false
@@ -2739,6 +2756,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
           set({ isStreaming: true, reattachedMidTurn: true })
         }
       }
+      if (options?.awaitingSession !== true) startEmptyChat(get)
       return true
     } catch (err) {
       get().addMessage({

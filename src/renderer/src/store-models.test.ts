@@ -63,7 +63,12 @@ before(async () => {
             return settings
           },
         },
+        workspace: {
+          setActive: async (id: string) => ({ ...WORKSPACE, id }),
+        },
+        ui: { flushPendingPrompts: async () => {} },
         session: {
+          createNew: async () => { calls.push('createNew'); return { success: true } },
           getState: async () => ({ success: true, data: { model: MODEL, thinkingLevel } }),
           getStats: async () => ({ success: true, data: null }),
           list: async () => [],
@@ -90,6 +95,7 @@ beforeEach(() => {
     activeWorkspace: WORKSPACE, activeSessionRuntimeId: null,
     piStatus: 'stopped', piPid: null, piError: null,
     sessionState: null, sessionStats: null, messages: [],
+    currentView: 'home', sessionLoading: false, sessionRuntimes: {}, editorDirty: false,
   })
 })
 
@@ -98,6 +104,77 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
   const promise = new Promise<void>((done) => { resolve = done })
   return { promise, resolve }
 }
+
+test('entering an empty chat starts a real session without resuming or sending a prompt', async () => {
+  useAppStore.getState().setCurrentView('chat')
+  useAppStore.getState().setCurrentView('chat')
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(calls, ['start'])
+  assert.deepEqual(startOptions, { continueSession: false })
+  assert.equal(useAppStore.getState().sessionState?.model?.name, MODEL.name)
+  assert.deepEqual(useAppStore.getState().messages, [])
+})
+
+test('a cold project starts in the background without blocking navigation', async () => {
+  const ready = deferred()
+  startHook = () => ready.promise
+  useAppStore.setState({ currentView: 'chat' })
+  assert.equal(await useAppStore.getState().activateWorkspace('two'), true)
+  assert.equal(useAppStore.getState().activeWorkspace?.id, 'two')
+  assert.equal(useAppStore.getState().piStatus, 'starting')
+  assert.deepEqual(calls, ['start'])
+  assert.deepEqual(startOptions, { continueSession: false })
+  ready.resolve()
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(useAppStore.getState().sessionState?.model?.id, MODEL.id)
+})
+
+test('workspace activation for an explicit session does not create an empty session', async () => {
+  useAppStore.setState({ currentView: 'chat' })
+  await useAppStore.getState().activateWorkspace('two', { awaitingSession: true })
+  useAppStore.getState().setCurrentView('chat')
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(calls, [])
+})
+
+test('Home does not start a session, and explicit New Session wins over chat initialization', async () => {
+  await useAppStore.getState().activateWorkspace('two')
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(calls, [])
+  useAppStore.getState().setCurrentView('chat')
+  await useAppStore.getState().createNewSession()
+  assert.deepEqual(calls, ['createNew'])
+})
+
+test('launch startup keeps its resume options when Chat becomes visible', async () => {
+  const ready = deferred()
+  startHook = () => ready.promise
+  const starting = useAppStore.getState().startPi()
+  useAppStore.getState().setCurrentView('chat')
+  await Promise.resolve()
+  assert.deepEqual(calls, ['start'])
+  assert.equal(startOptions, undefined)
+  ready.resolve()
+  await starting
+})
+
+test('returning to a hydrated chat reuses its session', async () => {
+  await useAppStore.getState().startPi()
+  calls.length = 0
+  useAppStore.getState().setCurrentView('chat')
+  await Promise.resolve()
+  assert.deepEqual(calls, [])
+})
+
+test('failed automatic startup stays in error without an automatic retry', async () => {
+  startFailure = new Error('binary unavailable')
+  useAppStore.getState().setCurrentView('chat')
+  await new Promise((resolve) => setImmediate(resolve))
+  useAppStore.getState().setCurrentView('chat')
+  await Promise.resolve()
+  assert.deepEqual(calls, ['start'])
+  assert.equal(useAppStore.getState().piStatus, 'error')
+})
 
 test('a fresh composer can list and select models before sending its first prompt', async () => {
   assert.deepEqual(await useAppStore.getState().listModels(), [MODEL])
@@ -186,7 +263,7 @@ test('navigating away during startup does not load models or overwrite the new w
   const ready = deferred()
   startHook = () => ready.promise
   const pending = useAppStore.getState().listModels()
-  useAppStore.setState({ activeWorkspace: { ...WORKSPACE, id: 'two' } })
+  useAppStore.setState({ activeWorkspace: { ...WORKSPACE, id: 'two' }, piStatus: 'stopped' })
   ready.resolve()
   await assert.rejects(pending)
   assert.deepEqual(calls, ['start'])
@@ -199,7 +276,7 @@ test('late startup failures do not mark the newly selected workspace as failed',
   startHook = () => ready.promise
   startFailure = new Error('binary unavailable')
   const pending = useAppStore.getState().listModels()
-  useAppStore.setState({ activeWorkspace: { ...WORKSPACE, id: 'two' } })
+  useAppStore.setState({ activeWorkspace: { ...WORKSPACE, id: 'two' }, piStatus: 'stopped' })
   ready.resolve()
   await assert.rejects(pending)
   assert.equal(useAppStore.getState().piStatus, 'stopped')

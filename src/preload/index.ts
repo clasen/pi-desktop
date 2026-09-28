@@ -269,6 +269,8 @@ interface PiDesktopAPI {
   // Git issue-to-PR conveyor. All mutating actions require explicit renderer clicks.
   git: {
     status(): Promise<GitConveyorStatus>
+    localBranches(): Promise<string[]>
+    switchBranch(workspaceId: string, branch: string): Promise<GitConveyorStatus>
     /** Suggest an English subject for the pending commit diff; never throws for model failures. */
     generateCommitMessage(request: GitCommitMessageRequest): Promise<GitCommitMessageSuggestion>
     commit(options: GitConveyorCommitOptions): Promise<GitConveyorStatus>
@@ -563,6 +565,8 @@ const api: PiDesktopAPI = {
 
   git: {
     status: () => ipcRenderer.invoke(IPC_CHANNELS.GIT_CONVEYOR_STATUS),
+    localBranches: () => ipcRenderer.invoke(IPC_CHANNELS.GIT_LOCAL_BRANCHES),
+    switchBranch: (workspaceId, branch) => ipcRenderer.invoke(IPC_CHANNELS.GIT_SWITCH_BRANCH, workspaceId, branch),
     generateCommitMessage: (request) => ipcRenderer.invoke(IPC_CHANNELS.GIT_COMMIT_MESSAGE_GENERATE, request),
     commit: (options) => ipcRenderer.invoke(IPC_CHANNELS.GIT_CONVEYOR_COMMIT, options),
     push: () => ipcRenderer.invoke(IPC_CHANNELS.GIT_CONVEYOR_PUSH),

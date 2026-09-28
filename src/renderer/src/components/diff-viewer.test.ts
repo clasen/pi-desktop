@@ -22,11 +22,16 @@ beforeEach(() => {
   })
 })
 
-test('refreshes an open diff only at agent end and unsubscribes when closed', () => {
+test('refreshes an open diff at agent end or a branch switch and unsubscribes when closed', () => {
   let listener: Parameters<typeof window.piDesktop.onEvent>[0] | undefined
+  let fileListener: Parameters<typeof window.piDesktop.onFileChange>[0] | undefined
   window.piDesktop.onEvent = (callback) => {
     listener = callback
     return () => { listener = undefined }
+  }
+  window.piDesktop.onFileChange = (callback) => {
+    fileListener = callback
+    return () => { fileListener = undefined }
   }
   let refreshes = 0
   const close = subscribeDiffRefresh(async () => { refreshes++ })
@@ -37,8 +42,13 @@ test('refreshes an open diff only at agent end and unsubscribes when closed', ()
   assert.equal(refreshes, 1)
   listener?.({ type: 'agent_end', messages: [] })
   assert.equal(refreshes, 2)
+  fileListener?.({ changeType: 'change', relativePath: 'src/app.ts' })
+  assert.equal(refreshes, 2)
+  fileListener?.({ changeType: 'change', relativePath: '.' })
+  assert.equal(refreshes, 3)
   close()
   assert.equal(listener, undefined)
+  assert.equal(fileListener, undefined)
 })
 
 test('opens the exact diff path and reveals the editor from either diff surface', async () => {

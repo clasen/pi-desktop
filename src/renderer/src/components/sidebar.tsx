@@ -434,6 +434,7 @@ export function Sidebar(): React.JSX.Element {
             type="button"
             onClick={() => void startNewSession()}
             disabled={!activeWorkspace}
+            style={{ borderColor: activeWorkspace?.color }}
             className="group flex w-full items-center gap-2 rounded-lg border border-accent px-3 py-2.5 text-sm font-medium text-primary transition-colors hover:bg-highlight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-50"
             title={
               activeWorkspace

@@ -510,6 +510,14 @@ test('a failed model selection does not request composer focus', async () => {
   }
 })
 
+test('an explicit session pick wins over empty-chat startup in the same interaction', async () => {
+  useAppStore.setState({ activeWorkspace: WORKSPACE_ONE, piStatus: 'stopped' })
+  useAppStore.getState().setCurrentView('chat')
+  await useAppStore.getState().switchSession(SESSION_PATH)
+  assert.equal(calls.includes(`switch:${SESSION_PATH}`), true)
+  assert.equal(calls.includes('pi.start'), false)
+})
+
 test('switchSession requests composer focus without warning when Pi is idle', async () => {
   useAppStore.setState({ composerFocusRequested: false })
   await useAppStore.getState().switchSession(SESSION_PATH)
@@ -837,13 +845,13 @@ test('openFolderAsWorkspace switches when the dropped folder is an existing othe
   assert.equal(useAppStore.getState().currentView, 'chat')
   assert.equal(
     useAppStore.getState().piStatus,
-    'stopped',
-    'an idle target shows the empty view instantly — no process is spawned'
+    'starting',
+    'the empty chat starts its session without waiting for readiness'
   )
   assert.equal(
     calls.includes('pi.start'),
-    false,
-    'navigation must not spawn a process'
+    true,
+    'the composer must resolve its model before the first prompt'
   )
 })
 

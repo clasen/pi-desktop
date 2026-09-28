@@ -7,6 +7,7 @@ import type { GitCommitMessageError, GitConveyorStatus, GitFileStatus } from '..
 import { t } from '../../../shared/i18n'
 import { GIT_COMMIT_MESSAGE_CONFIG, GIT_CONVEYOR_NOTICE_TIMEOUT_MS } from '../../../shared/default-settings'
 import { formatIpcError } from '../utils/ipc-error'
+import { withGitOperation } from '../utils/git-operation'
 import { isImeComposing } from '../utils/ime-composing'
 import { createStaleGuard } from '../utils/stale-guard'
 import {
@@ -130,8 +131,9 @@ export function scheduleGitNoticeDismissal(kind: keyof typeof GIT_CONVEYOR_NOTIC
   return () => clearTimeout(timer)
 }
 
-export function GitConveyorActions({ children, onChanged, selection, shortcutActive = false }: {
+export function GitConveyorActions({ children, onChanged, selection, shortcutActive = false, disabled = false }: {
   shortcutActive?: boolean
+  disabled?: boolean
   children?: ReactNode
   onChanged?: () => void
   /** What Commit records; absent commits the index (or the tracked changes when nothing is staged). */
@@ -222,7 +224,7 @@ export function GitConveyorActions({ children, onChanged, selection, shortcutAct
     setFeedback(null)
     dispatchStatusError({ type: 'recovered' })
     try {
-      const result = await action()
+      const result = await withGitOperation(action)
       setFeedback(success(result))
     } catch (err) {
       setError(formatIpcError(err))
@@ -314,18 +316,18 @@ export function GitConveyorActions({ children, onChanged, selection, shortcutAct
         )}
         {children}
         {publishAction === 'commitPush' && (
-          <button type="button" onClick={() => openCommitDialog(false)} disabled={busy !== null || !status?.branch} className="flex shrink-0 items-center gap-1 rounded border border-border px-2 py-1 text-[10px] text-muted transition-colors hover:bg-surface-hover hover:text-primary disabled:cursor-not-allowed disabled:opacity-40" title={t('conveyor.commitButtonTitle')}>
+          <button type="button" onClick={() => openCommitDialog(false)} disabled={disabled || busy !== null || !status?.branch} className="flex shrink-0 items-center gap-1 rounded border border-border px-2 py-1 text-[10px] text-muted transition-colors hover:bg-surface-hover hover:text-primary disabled:cursor-not-allowed disabled:opacity-40" title={t('conveyor.commitButtonTitle')}>
             {busy === 'commit' ? <Loader2 size={11} className="animate-spin" /> : <GitCommitHorizontal size={11} />}
             {t('conveyor.commit')}
           </button>
         )}
         {publishAction === 'commitPush' ? (
-          <button type="button" onClick={() => openCommitDialog(true)} disabled={busy !== null || !status?.branch} className="flex shrink-0 items-center gap-1 rounded border border-border px-2 py-1 text-[10px] text-muted transition-colors hover:bg-surface-hover hover:text-primary disabled:cursor-not-allowed disabled:opacity-40" title={t('conveyor.commitAndPushTitle')}>
+          <button type="button" onClick={() => openCommitDialog(true)} disabled={disabled || busy !== null || !status?.branch} className="flex shrink-0 items-center gap-1 rounded border border-border px-2 py-1 text-[10px] text-muted transition-colors hover:bg-surface-hover hover:text-primary disabled:cursor-not-allowed disabled:opacity-40" title={t('conveyor.commitAndPushTitle')}>
             {busy === 'commitPush' ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
             {t('conveyor.commitAndPush')}
           </button>
         ) : publishAction === 'push' && (
-          <button type="button" onClick={() => void push()} disabled={busy !== null || !status?.branch} className="flex shrink-0 items-center gap-1 rounded border border-border px-2 py-1 text-[10px] text-muted transition-colors hover:bg-surface-hover hover:text-primary disabled:cursor-not-allowed disabled:opacity-40" title={t('conveyor.pushButtonTitle')}>
+          <button type="button" onClick={() => void push()} disabled={disabled || busy !== null || !status?.branch} className="flex shrink-0 items-center gap-1 rounded border border-border px-2 py-1 text-[10px] text-muted transition-colors hover:bg-surface-hover hover:text-primary disabled:cursor-not-allowed disabled:opacity-40" title={t('conveyor.pushButtonTitle')}>
             {busy === 'push' || busy === 'commitPush' ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
             {t('conveyor.push')}
           </button>

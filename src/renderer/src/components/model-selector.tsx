@@ -28,7 +28,6 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
   const runtimeId = useAppStore((state) => state.activeSessionRuntimeId)
   const piStatus = useAppStore((state) => state.piStatus)
   const engineLabel = useAppStore((state) => agentEngineLabel(state.piEngine) ?? DEFAULT_AGENT_ENGINE_LABEL)
-  const settings = useAppStore((state) => state.settings)
 
   const [isOpen, setIsOpen] = useState(false)
   const modelSelectorOpenRequest = useAppStore((state) => state.modelSelectorOpenRequest)
@@ -46,13 +45,10 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
   const listRef = useRef<HTMLDivElement>(null)
 
   const currentModel = sessionState?.model
-  const fallbackLabel =
-    currentModel?.name ??
-    (settings?.defaultModel
-      ? settings.defaultProvider
-        ? `${settings.defaultProvider}/${settings.defaultModel}`
-        : settings.defaultModel
-      : t('models.selector.selectModel'))
+  const modelPending = !currentModel &&
+    (piStatus === 'starting' || (piStatus === 'running' && !sessionState))
+  const modelLabel = currentModel?.name ??
+    (modelPending ? t('common.loading') : t('models.selector.selectModel'))
 
   const close = (): void => {
     setIsOpen(false)
@@ -192,8 +188,10 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
         aria-label={t('models.selector.selectModel')}
         aria-expanded={isOpen}
       >
-        <Cpu size={10} className="shrink-0" />
-        <span className="min-w-0 truncate">{fallbackLabel}</span>
+        {modelPending
+          ? <Loader2 size={10} className="shrink-0 animate-spin" />
+          : <Cpu size={10} className="shrink-0" />}
+        <span className="min-w-0 truncate">{modelLabel}</span>
         <ChevronUp
           size={10}
           className={clsx('shrink-0 transition-transform', isOpen && 'rotate-180')}

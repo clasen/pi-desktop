@@ -31,6 +31,7 @@ import {
 } from './git-worktree'
 import { extractGitHubPullRequestUrl, resolvePullRequestHeadBranch } from './git-conveyor'
 import { t, tEnglish } from '../shared/i18n'
+import { nextWorkspaceColor, reconcileWorkspaceColors } from './workspace-colors'
 
 /**
  * Manages project workspaces and their independent Pi session runtimes.
@@ -82,11 +83,6 @@ interface WorkspaceState {
   workspaces: Workspace[]
   activeWorkspaceId: string | null
 }
-
-const WORKSPACE_COLORS = [
-  '#3b82f6', '#ef4444', '#22c55e', '#eab308', '#a855f7',
-  '#ec4899', '#06b6d4', '#f97316', '#6366f1', '#14b8a6',
-]
 
 export type PiManagerListener = (manager: PiRpcManager) => void
 export type ActiveWorkspaceListener = (workspaceId: string | null) => void
@@ -155,7 +151,6 @@ export class WorkspaceManager {
   private activeRuntimeId: string | null = null
   private sessionRuntimeListeners: SessionRuntimeListener[] = []
   private configPath: string
-  private nextColorIndex = 0
   private piManagerListeners: PiManagerListener[] = []
   // Track which (manager, listener) pairs are already wired so we never call
   // the same listener twice for the same manager. Using a WeakSet keyed on
@@ -792,11 +787,10 @@ export class WorkspaceManager {
       path,
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
-      color: WORKSPACE_COLORS[this.nextColorIndex % WORKSPACE_COLORS.length],
+      color: nextWorkspaceColor(this.workspaces),
       kind: 'folder',
     }
 
-    this.nextColorIndex++
     this.workspaces.push(workspace)
 
     // Create Pi manager and file service for this workspace
@@ -969,7 +963,7 @@ export class WorkspaceManager {
       path: entry.path,
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
-      color: WORKSPACE_COLORS[this.nextColorIndex % WORKSPACE_COLORS.length],
+      color: nextWorkspaceColor(this.workspaces),
       kind: 'worktree',
       repoRoot,
       ...(entry.branch ? { branch: entry.branch } : {}),
@@ -977,7 +971,6 @@ export class WorkspaceManager {
       managed: false,
       taskPrompt,
     }
-    this.nextColorIndex++
     this.workspaces.push(workspace)
     const piManager = new PiRpcManager()
     this.piManagers.set(workspace.id, piManager)
@@ -1095,7 +1088,7 @@ export class WorkspaceManager {
       path: targetPath,
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
-      color: WORKSPACE_COLORS[this.nextColorIndex % WORKSPACE_COLORS.length],
+      color: nextWorkspaceColor(this.workspaces),
       kind: 'worktree',
       repoRoot: git.repoRoot,
       branch,
@@ -1104,7 +1097,6 @@ export class WorkspaceManager {
       managed: true,
       ...(taskPrompt ? { taskPrompt } : {}),
     }
-    this.nextColorIndex++
     this.workspaces.push(workspace)
     const piManager = new PiRpcManager()
     this.piManagers.set(workspace.id, piManager)
@@ -1170,6 +1162,7 @@ export class WorkspaceManager {
       kind: workspace.kind ?? 'folder',
     }))
     this.activeWorkspaceId = state.activeWorkspaceId ?? null
+    if (reconcileWorkspaceColors(this.workspaces)) await this.saveWorkspaces()
 
     // Create file services and Pi managers for loaded workspaces
     for (const ws of this.workspaces) {

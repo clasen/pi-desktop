@@ -11,6 +11,8 @@ import {
   extractUrl,
   getGitConveyorStatus,
   githubRepoFromRemote,
+  listLocalBranches,
+  switchLocalBranch,
   parseAheadBehind,
   pushBranch,
   readCommitDiff,
@@ -58,6 +60,93 @@ async function rejectCommits(repo: string, git: GitRunner): Promise<void> {
   // Pin the path so a global core.hooksPath cannot disable the hook.
   git(['config', 'core.hooksPath', hooks])
 }
+
+test('branch switching updates the worktree and carries non-conflicting staged and unstaged changes', async () => {
+  await withGitRepo(async (repo, git) => {
+    for (const file of ['app.txt', 'staged.txt', 'unstaged.txt']) await writeFile(join(repo, file), 'original\n')
+    git(['add', '.'])
+    git(['commit', '-m', 'initial'])
+    const initialBranch = git(['branch', '--show-current'])
+    git(['switch', '-c', 'feature/nested'])
+    await writeFile(join(repo, 'app.txt'), 'feature\n')
+    git(['commit', '-am', 'feature'])
+    git(['switch', initialBranch])
+    await writeFile(join(repo, 'staged.txt'), 'staged edit\n')
+    git(['add', 'staged.txt'])
+    await writeFile(join(repo, 'unstaged.txt'), 'unstaged edit\n')
+    await writeFile(join(repo, 'untracked.txt'), 'untracked edit\n')
+    const index = git(['diff', '--cached'])
+    const status = await switchLocalBranch(repo, 'feature/nested')
+    assert.equal(status.branch, 'feature/nested')
+    assert.equal(await readFile(join(repo, 'app.txt'), 'utf8'), 'feature\n')
+    assert.equal(git(['diff', '--cached']), index)
+    assert.equal(await readFile(join(repo, 'unstaged.txt'), 'utf8'), 'unstaged edit\n')
+    assert.equal(await readFile(join(repo, 'untracked.txt'), 'utf8'), 'untracked edit\n')
+    await commitAll(repo, { message: 'on selected branch' })
+    assert.equal(git(['log', '-1', '--format=%s', 'feature/nested']), 'on selected branch')
+    assert.equal(git(['log', '-1', '--format=%s', initialBranch]), 'initial')
+  })
+})
+
+for (const change of ['staged', 'unstaged', 'untracked']) {
+  test(`branch switching refuses to overwrite ${change} changes`, async () => {
+    await withGitRepo(async (repo, git) => {
+      await writeFile(join(repo, 'base.txt'), 'base\n')
+      if (change !== 'untracked') await writeFile(join(repo, 'app.txt'), 'original\n')
+      git(['add', '.'])
+      git(['commit', '-m', 'initial'])
+      const initialBranch = git(['branch', '--show-current'])
+      git(['switch', '-c', 'target'])
+      await writeFile(join(repo, 'app.txt'), 'target content\n')
+      git(['add', '.'])
+      git(['commit', '-m', 'target'])
+      git(['switch', initialBranch])
+      await writeFile(join(repo, 'app.txt'), 'local changes\n')
+      if (change === 'staged') git(['add', 'app.txt'])
+      const status = git(['status', '--porcelain'])
+      const index = git(['write-tree'])
+      await assert.rejects(switchLocalBranch(repo, 'target'), /overwritten/i)
+      assert.equal(git(['branch', '--show-current']), initialBranch)
+      assert.equal(git(['status', '--porcelain']), status)
+      assert.equal(git(['write-tree']), index)
+      assert.equal(await readFile(join(repo, 'app.txt'), 'utf8'), 'local changes\n')
+      assert.equal(git(['stash', 'list']), '')
+    })
+  })
+}
+
+test('branch selection lists only local branches and refuses revision expressions or option-like input', async () => {
+  await withGitRepo(async (repo, git) => {
+    assert.deepEqual(await listLocalBranches(repo), [])
+    git(['commit', '--allow-empty', '-m', 'initial'])
+    const initialBranch = git(['branch', '--show-current'])
+    git(['branch', 'feature/nested'])
+    git(['tag', 'feature/nested'])
+    git(['update-ref', 'refs/remotes/origin/remote-only', 'HEAD'])
+    assert.deepEqual(await listLocalBranches(repo), [initialBranch, 'feature/nested'].sort())
+    for (const branch of ['remote-only', 'origin/remote-only', 'HEAD', '@{-1}', '--detach', '', 'missing']) {
+      await assert.rejects(switchLocalBranch(repo, branch), /existing local branch/)
+      assert.equal(git(['branch', '--show-current']), initialBranch)
+    }
+    git(['switch', '--detach'])
+    assert.equal((await switchLocalBranch(repo, 'feature/nested')).branch, 'feature/nested')
+  })
+  await withPlainFolder(async (folder) => assert.deepEqual(await listLocalBranches(folder), []))
+})
+
+test('branch switching refuses an active Git operation or a branch held by another worktree', async () => {
+  await withGitRepo(async (repo, git) => {
+    git(['commit', '--allow-empty', '-m', 'initial'])
+    const initialBranch = git(['branch', '--show-current'])
+    git(['branch', 'target'])
+    await writeFile(join(repo, '.git', 'MERGE_HEAD'), `${git(['rev-parse', 'HEAD'])}\n`)
+    await assert.rejects(switchLocalBranch(repo, 'target'), /merge.*in progress/)
+    await rm(join(repo, '.git', 'MERGE_HEAD'))
+    git(['worktree', 'add', join(repo, 'other-worktree'), 'target'])
+    await assert.rejects(switchLocalBranch(repo, 'target'), /already (?:used|checked out)/)
+    assert.equal(git(['branch', '--show-current']), initialBranch)
+  })
+})
 
 test('commit snapshots follow the curated index and exclude unstaged and untracked content', async () => {
   await withGitRepo(async (repo, git) => {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../store'
 import { useChatVisible } from '../hooks'
@@ -329,6 +329,13 @@ export function FileSearch({ isOpen, onClose }: FileSearchProps): React.JSX.Elem
   const [results, setResults] = useState<FileSearchResult[]>([])
   const [loading, setLoading] = useState(false)
   const [contentMode, setContentMode] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(0)
+  const activeResultRef = useRef<HTMLButtonElement>(null)
+  const resultsId = useId()
+
+  useEffect(() => {
+    activeResultRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [activeIndex, results, loading, isOpen])
 
   useEffect(() => {
     if (!isOpen) {
@@ -356,27 +363,31 @@ export function FileSearch({ isOpen, onClose }: FileSearchProps): React.JSX.Elem
   }, [isOpen, onClose])
 
   useEffect(() => {
-    if (!query.trim()) {
-      setResults([])
-      return
-    }
+    setResults([])
+    setActiveIndex(0)
+    setLoading(false)
+    if (!isOpen || !query.trim()) return
 
+    let cancelled = false
+    setLoading(true)
     const timer = setTimeout(async () => {
-      setLoading(true)
       try {
         const searchResults = contentMode
           ? await window.piDesktop.files.searchContent(query)
           : await window.piDesktop.files.search(query)
-        setResults(searchResults)
+        if (!cancelled) setResults(searchResults)
       } catch {
-        setResults([])
+        if (!cancelled) setResults([])
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }, 200)
 
-    return () => clearTimeout(timer)
-  }, [query, contentMode])
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [query, contentMode, isOpen])
 
   const handleSelect = async (result: FileSearchResult) => {
     const ok = await useAppStore.getState().setPreviewTarget({
@@ -391,6 +402,22 @@ export function FileSearch({ isOpen, onClose }: FileSearchProps): React.JSX.Elem
     if (ok && useAppStore.getState().fileSearchOpen) onClose()
   }
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
+    if (isImeComposing(e.nativeEvent) || useAppStore.getState().confirmRequest) return
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Enter') return
+    e.preventDefault()
+    e.stopPropagation()
+    if (loading || results.length === 0) return
+
+    if (e.key === 'ArrowDown') {
+      setActiveIndex((i) => Math.min(i + 1, results.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      setActiveIndex((i) => Math.max(i - 1, 0))
+    } else if (results[activeIndex]) {
+      void handleSelect(results[activeIndex])
+    }
+  }
+
   if (!isOpen) return null
 
   return (
@@ -403,6 +430,13 @@ export function FileSearch({ isOpen, onClose }: FileSearchProps): React.JSX.Elem
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
+            role="combobox"
+            aria-label={contentMode ? t('files.search.contentPlaceholder') : t('files.search.namePlaceholder')}
+            aria-autocomplete="list"
+            aria-expanded={true}
+            aria-controls={resultsId}
+            aria-activedescendant={!loading && results[activeIndex] ? `${resultsId}-${activeIndex}` : undefined}
             placeholder={contentMode ? t('files.search.contentPlaceholder') : t('files.search.namePlaceholder')}
             className="flex-1 ml-3 bg-transparent text-sm text-primary placeholder:text-faint outline-none"
             autoFocus
@@ -427,7 +461,7 @@ export function FileSearch({ isOpen, onClose }: FileSearchProps): React.JSX.Elem
         </div>
 
         {/* Results */}
-        <div className="max-h-80 overflow-y-auto">
+        <div id={resultsId} role="listbox" aria-busy={loading} className="max-h-80 overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 size={20} className="animate-spin text-dim" />
@@ -441,8 +475,16 @@ export function FileSearch({ isOpen, onClose }: FileSearchProps): React.JSX.Elem
               {results.map((result, i) => (
                 <button
                   key={`${result.path}-${i}`}
+                  id={`${resultsId}-${i}`}
+                  ref={i === activeIndex ? activeResultRef : undefined}
+                  role="option"
+                  aria-selected={i === activeIndex}
+                  onMouseEnter={() => setActiveIndex(i)}
                   onClick={() => void handleSelect(result)}
-                  className="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-surface-hover transition-colors"
+                  className={clsx(
+                    'flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-surface-hover transition-colors',
+                    i === activeIndex && 'bg-surface-hover'
+                  )}
                 >
                   <FileText size={14} className="shrink-0 text-dim" />
                   <div className="min-w-0 flex-1">
@@ -601,10 +643,11 @@ export function FilePreview(): React.JSX.Element | null {
   if (!file || !path) return null
 
   const handleSave = async () => {
+    if (loading || saving || isPdf) return
     // Flush keystrokes still inside the debounce window so the newest text is
     // written, not the state snapshot from before the timer fired.
     const text = editBuffer.flush() ?? content
-    if (text === null) return
+    if (text === null || text === savedContent) return
 
     setSaving(true)
     setError(null)
@@ -622,6 +665,14 @@ export function FilePreview(): React.JSX.Element | null {
     }
   }
 
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (isPdf || isImeComposing(event.nativeEvent)) return
+    if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== 's') return
+    event.preventDefault()
+    event.stopPropagation()
+    if (!event.repeat) void handleSave()
+  }
+
   const handleRevert = () => {
     if (savedContent !== null) {
       // Pending keystrokes are part of what is being reverted.
@@ -631,7 +682,10 @@ export function FilePreview(): React.JSX.Element | null {
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-[var(--color-app)]">
+    <div
+      className="flex flex-1 flex-col overflow-hidden bg-[var(--color-app)]"
+      onKeyDownCapture={handleKeyDown}
+    >
       {/* Header */}
       <div className="flex h-8 shrink-0 items-center justify-between border-b border-border px-3">
         <div className="flex items-center gap-2 min-w-0">

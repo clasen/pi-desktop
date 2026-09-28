@@ -541,6 +541,9 @@ export function useInitialize(): void {
         // of seconds on a large ~/.pi/agent/sessions tree and freezes main IPC).
         useAppStore.getState().setCurrentView('home')
       } else {
+        // Claim startup before exposing Chat so its empty-session initialization
+        // does not override the launch-time resume preference.
+        void startPi().then(() => refreshSessionStats()).catch(() => undefined)
         useAppStore.getState().setCurrentView('chat')
       }
 
@@ -572,9 +575,6 @@ export function useInitialize(): void {
         return
       }
 
-      // Boot Pi in the background. The shell is already interactive; the
-      // session-runtime running event hydrates Chat when the process is ready.
-      void startPi().then(() => refreshSessionStats()).catch(() => undefined)
       void window.piDesktop.workspace.getActivity()
         .then((activity) => useAppStore.getState().handleWorkspaceActivity(activity))
         .catch(() => undefined)

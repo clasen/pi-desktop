@@ -44,9 +44,14 @@ interface DiffFileBlock {
 const TOOLBAR_BUTTON = 'flex shrink-0 items-center justify-center gap-1 rounded border px-1.5 py-1 text-[10px] transition-colors'
 
 export function subscribeDiffRefresh(refresh: () => Promise<void>): () => void {
-  return window.piDesktop.onEvent((event) => {
+  const unsubscribeAgent = window.piDesktop.onEvent((event) => {
     if (event.type === 'agent_end') void refresh()
   })
+  const unsubscribeFiles = window.piDesktop.onFileChange((event) => {
+    // A branch switch invalidates the entire workspace, not just one file.
+    if (event.relativePath === '.') void refresh()
+  })
+  return () => { unsubscribeAgent(); unsubscribeFiles() }
 }
 
 interface DiffViewerProps {
@@ -209,7 +214,7 @@ export function DiffViewer({ onClose }: DiffViewerProps = {}): React.JSX.Element
           </div>
         </div>
         <div className="min-w-0 border-t border-border px-4 py-2">
-          <GitConveyorActions key={workspaceId} onChanged={loadDiff} selection={commitSelection} shortcutActive={shortcutActive && !loading && !loadError}>
+          <GitConveyorActions key={workspaceId} onChanged={loadDiff} selection={commitSelection} disabled={loading || discarding || !!loadError} shortcutActive={shortcutActive && !loading && !loadError}>
             <button
               type="button"
               onClick={() => void discard(visibleFiles)}
