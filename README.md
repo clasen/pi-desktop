@@ -193,7 +193,7 @@ The installer downloads a published build **from this fork**, including alpha re
 - **macOS Intel / Apple Silicon:** installs to `~/Applications/Pi Desktop.app` without administrator access. A failed app replacement restores the previous version.
 - **Windows x64:** opens the normal setup wizard and reports cancellation or failure. Additional architectures are rejected before installation.
 
-The scripts need a Release containing installers **and their `.sha256` files**; they do not compile the source if a release is missing. To publish your current fork, update `package.json` and `package-lock.json` to a new version, then push the matching `v<version>` tag. `.github/workflows/build.yml` builds all supported platforms and publishes an alpha prerelease. A manual **Actions → Build → Run workflow** run produces downloadable artifacts only, not a Release. SHA-256 detects corrupt downloads; it is not a code signature, and alpha builds remain unsigned.
+The scripts need a Release containing installers **and their `.sha256` files**; they do not compile the source if a release is missing. To publish your current fork, update `package.json` and `package-lock.json` to a new version, then push the matching `v<version>` tag. `.github/workflows/build.yml` builds all supported platforms and publishes an alpha prerelease. A manual **Actions → Build → Run workflow** run produces downloadable artifacts; enable **Publish installers as a GitHub prerelease** to also publish the version in `package.json`. Bump the version first: publishing refuses to reuse a tag pointing at another commit. SHA-256 detects corrupt downloads; it is not a code signature, and alpha builds remain unsigned.
 
 ### Manual install
 

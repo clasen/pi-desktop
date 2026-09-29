@@ -38,7 +38,7 @@ test('all 7 built-in themes exist, validate, and fully resolve', () => {
   }
 })
 
-test('ported themes pin every token in overrides (parity guarantee)', () => {
+test('ported themes pin legacy tokens in overrides (parity guarantee)', () => {
   for (const id of EXPECTED_IDS) {
     if (id === 'dark' || id === 'light') continue
     const theme = validateThemeFile(
@@ -49,7 +49,9 @@ test('ported themes pin every token in overrides (parity guarantee)', () => {
     // reproduce (no theme ever remapped the red-500/600 or neutral-600 shades),
     // so they derive via MIX(..., 15) / MIX(..., 35) instead of pinning the
     // raw value that would carry the theme-blind bug forward.
-    const derivedOnly = new Set(['error-hover', 'border-strong-hover'])
+    // Workspace chrome tokens also derive from existing palette colors;
+    // they were not part of the legacy themes being ported.
+    const derivedOnly = new Set(['error-hover', 'border-strong-hover', 'sidebar', 'chat-column', 'chat-column-border'])
     for (const token of TOKEN_NAMES) {
       if (seedBacked.has(token) || derivedOnly.has(token)) continue
       assert.ok(theme.overrides?.[token], `${id}: token ${token} not pinned`)
