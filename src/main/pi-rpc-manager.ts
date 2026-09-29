@@ -24,6 +24,7 @@ import {
 import { escapeCmdSpawn } from './cmd-escape'
 import { appLog } from './app-log'
 import { getGuiDataPath } from './app-data-paths'
+import { piDotenvPath, readPiDotenv } from './pi-dotenv'
 import { t, tEnglish } from '../shared/i18n'
 
 /**
@@ -622,6 +623,16 @@ function resolvePiChildTempDir(): string {
 }
 
 /** Windows-only TEMP/TMP/TMPDIR override for the Pi child. Empty on other OSes. */
+function readPiDotenvLogged(): NodeJS.ProcessEnv {
+  const path = piDotenvPath()
+  try {
+    return readPiDotenv(path, process.env)
+  } catch (err) {
+    appLog.warn('pi', `Could not read ${path}`, err)
+    return {}
+  }
+}
+
 function buildPiChildEnv(): NodeJS.ProcessEnv {
   if (!IS_WINDOWS) return {}
   const tmp = resolvePiChildTempDir()
@@ -848,7 +859,7 @@ export class PiRpcManager extends EventEmitter {
       cwd: options.cwd,
       // Windows only: redirect TEMP so pi-subagents can mkdir without EPERM on
       // locked %LocalAppData%\Temp trees. POSIX keeps the system temp (OS cleanup).
-      env: { ...process.env, ...buildPiChildEnv(), ...options.env },
+      env: { ...readPiDotenvLogged(), ...process.env, ...buildPiChildEnv(), ...options.env },
       // .cmd/.bat/.ps1 shims on Windows can't be invoked directly from
       // spawn — they need the cmd.exe interpreter via shell:true.
       shell: cli.needsShell,
