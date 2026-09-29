@@ -215,8 +215,13 @@ $ErrorActionPreference = 'Stop'
 $env:PROCESSOR_ARCHITECTURE = $env:TEST_ARCH
 Remove-Item Env:PROCESSOR_ARCHITEW6432 -ErrorAction SilentlyContinue
 function Get-Command {
-    param($Name, $ErrorAction)
-    if (-not $env:TEST_AGENT_MISSING) { [pscustomobject]@{ Name = $Name } }
+    [CmdletBinding()]
+    param([string]$Name)
+    if ($Name -in @('pi', 'omp')) {
+        if (-not $env:TEST_AGENT_MISSING) { [pscustomobject]@{ Name = $Name } }
+        return
+    }
+    Microsoft.PowerShell.Core\\Get-Command @PSBoundParameters
 }
 function Invoke-WebRequest {
     param($Uri, $OutFile, [switch]$UseBasicParsing, $TimeoutSec)
@@ -236,14 +241,20 @@ function Read-Host {
 }
 & $env:TEST_INSTALLER
 `)
-  f.run = (extra = {}) => spawnSync('powershell.exe', ['-NoProfile', '-File', harness], {
-    encoding: 'utf8', timeout: 15000,
-    env: {
+  f.run = (extra = {}) => {
+    const env = {
       ...process.env, TEMP: path.join(f.dir, 'temp'), TMP: path.join(f.dir, 'temp'),
       TEST_DIR: f.dir, TEST_INSTALLER: path.join(root, 'install.ps1'),
       TEST_ARCH: 'AMD64', ...extra,
-    },
-  })
+    }
+    // Windows PowerShell must load its own modules, not inherit PowerShell 7's.
+    for (const key of Object.keys(env)) {
+      if (key.toLowerCase() === 'psmodulepath') delete env[key]
+    }
+    return spawnSync('powershell.exe', ['-NoProfile', '-File', harness], {
+      encoding: 'utf8', timeout: 15000, env,
+    })
+  }
   return f
 }
 const windowsTest = (name, fn) => test(name, { skip: !windows }, fn)
