@@ -221,7 +221,7 @@ function Get-Command {
 function Invoke-WebRequest {
     param($Uri, $OutFile, [switch]$UseBasicParsing, $TimeoutSec)
     Add-Content -LiteralPath (Join-Path $env:TEST_DIR 'requests') -Value $Uri
-    $Kind = if ($Uri -like '*/releases?*') { 'releases.json' } elseif ($Uri.EndsWith('.sha256')) { 'checksum' } else { 'payload' }
+    $Kind = if ($Uri.StartsWith('https://api.github.com/')) { 'releases.json' } elseif ($Uri.EndsWith('.sha256')) { 'checksum' } else { 'payload' }
     if ($env:TEST_FAIL -eq $Kind) { throw 'mock network error' }
     Copy-Item -LiteralPath (Join-Path $env:TEST_DIR $Kind) -Destination $OutFile
 }

@@ -60,7 +60,7 @@ jobs:
         run: npx --no-install tsx --test $(find src resources -name '*.test.ts')
 
   build:
-    name: Build (${{ matrix.os }})
+    name: Build (${{ matrix.os }}, ${{ matrix.arch }})
     needs: verify
     runs-on: ${{ matrix.os }}
     strategy:
@@ -68,23 +68,27 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            eb_args: '--linux AppImage --x64'
+            arch: x64
+            eb_args: '--linux AppImage'
             artifacts: |
               release/*.AppImage
               release/*.sha256
           - os: windows-latest
-            eb_args: '--win nsis portable --x64'
+            arch: x64
+            eb_args: '--win nsis portable'
             artifacts: |
               release/*.exe
               release/*.sha256
-          - os: macos-15
-            eb_args: '--mac dmg zip --arm64'
+          - os: macos-26
+            arch: arm64
+            eb_args: '--mac dmg zip'
             artifacts: |
               release/*.dmg
               release/*.zip
               release/*.sha256
-          - os: macos-15-intel
-            eb_args: '--mac dmg zip --x64'
+          - os: macos-26
+            arch: x64
+            eb_args: '--mac dmg zip'
             artifacts: |
               release/*.dmg
               release/*.zip
@@ -99,10 +103,6 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-
-      - name: Select Xcode for Icon Composer assets
-        if: runner.os == 'macOS'
-        run: sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
 
       - name: Test bootstrap installers
         run: node --test scripts/install.test.js
@@ -125,7 +125,7 @@ jobs:
 
       - name: Package with electron-builder
         shell: bash
-        run: npx --no-install electron-builder ${{ matrix.eb_args }} --publish never
+        run: npx --no-install electron-builder ${{ matrix.eb_args }} --${{ matrix.arch }} --publish never
         env:
           # No certificates in alpha — don't attempt to sign the macOS app.
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -136,7 +136,7 @@ jobs:
       - name: Upload installers
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: installers-${{ matrix.os }}
+          name: installers-${{ matrix.os }}-${{ matrix.arch }}
           path: ${{ matrix.artifacts }}
           if-no-files-found: error
           retention-days: 14
