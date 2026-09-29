@@ -1,4 +1,4 @@
-# Usage (PowerShell): curl.exe -fsSL https://raw.githubusercontent.com/clasen/pi-desktop/master/install.ps1 | Out-String | Invoke-Expression
+# Usage (PowerShell): iex (irm https://raw.githubusercontent.com/clasen/pi-desktop/master/install.ps1)
 & {
     $ErrorActionPreference = 'Stop'
     $Repo = 'clasen/pi-desktop'

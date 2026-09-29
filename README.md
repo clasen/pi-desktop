@@ -182,6 +182,12 @@ curl -fsSL https://raw.githubusercontent.com/clasen/pi-desktop/master/install.sh
 **Windows (PowerShell, not Command Prompt):**
 
 ```powershell
+iex (irm https://raw.githubusercontent.com/clasen/pi-desktop/master/install.ps1)
+```
+
+If that fails with *"The underlying connection was closed"* (older Windows PowerShell without TLS 1.2 enabled), use `curl.exe` instead:
+
+```powershell
 curl.exe -fsSL https://raw.githubusercontent.com/clasen/pi-desktop/master/install.ps1 | Out-String | Invoke-Expression
 ```
 

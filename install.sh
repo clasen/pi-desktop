@@ -42,7 +42,7 @@ main() {
     Linux) platform=linux ;;
     Darwin) platform=mac ;;
     MINGW*|MSYS*|CYGWIN*)
-      fail 'On Windows, run this in PowerShell: curl.exe -fsSL https://raw.githubusercontent.com/clasen/pi-desktop/master/install.ps1 | Out-String | Invoke-Expression' ;;
+      fail 'On Windows, run this in PowerShell: iex (irm https://raw.githubusercontent.com/clasen/pi-desktop/master/install.ps1)' ;;
     *) fail 'Unsupported operating system. See https://github.com/clasen/pi-desktop/releases.' ;;
   esac
   arch="$(uname -m)"
