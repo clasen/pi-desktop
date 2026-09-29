@@ -212,6 +212,8 @@ function windowsFixture(t) {
   const harness = path.join(f.dir, 'harness.ps1')
   writeFileSync(harness, `
 $ErrorActionPreference = 'Stop'
+$env:PROCESSOR_ARCHITECTURE = $env:TEST_ARCH
+Remove-Item Env:PROCESSOR_ARCHITEW6432 -ErrorAction SilentlyContinue
 function Get-Command {
     param($Name, $ErrorAction)
     if (-not $env:TEST_AGENT_MISSING) { [pscustomobject]@{ Name = $Name } }
@@ -239,7 +241,7 @@ function Read-Host {
     env: {
       ...process.env, TEMP: path.join(f.dir, 'temp'), TMP: path.join(f.dir, 'temp'),
       TEST_DIR: f.dir, TEST_INSTALLER: path.join(root, 'install.ps1'),
-      PROCESSOR_ARCHITECTURE: 'AMD64', PROCESSOR_ARCHITEW6432: '', ...extra,
+      TEST_ARCH: 'AMD64', ...extra,
     },
   })
   return f
@@ -272,7 +274,7 @@ windowsTest('Windows rejects corrupt downloads without executing them', (t) => {
 
 windowsTest('Windows rejects unsupported architectures before downloading', (t) => {
   const f = windowsFixture(t)
-  failed(f.run({ PROCESSOR_ARCHITECTURE: 'ARM64' }), /No prebuilt Windows installer/)
+  failed(f.run({ TEST_ARCH: 'ARM64' }), /No prebuilt Windows installer for ARM64/)
   assert.equal(existsSync(path.join(f.dir, 'requests')), false)
 })
 
