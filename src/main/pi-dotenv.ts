@@ -2,6 +2,7 @@ import { readFileSync } from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 import { parseEnv } from 'util'
+import { appLog } from './app-log'
 
 /** Optional user env file for agent processes, e.g. provider API keys. */
 export function piDotenvPath(home: string = homedir()): string {
@@ -25,4 +26,19 @@ export function readPiDotenv(path: string, inherited: NodeJS.ProcessEnv): NodeJS
     if (inherited[key] === undefined) out[key] = value
   }
   return out
+}
+
+/**
+ * `readPiDotenv` for the user's env file against the app's own environment, for
+ * processes the app spawns (Pi, the integrated terminal). An unreadable file is
+ * logged and yields none.
+ */
+export function loadPiDotenv(): NodeJS.ProcessEnv {
+  const path = piDotenvPath()
+  try {
+    return readPiDotenv(path, process.env)
+  } catch (err) {
+    appLog.warn('pi', `Could not read ${path}`, err)
+    return {}
+  }
 }

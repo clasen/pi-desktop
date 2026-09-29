@@ -2,6 +2,7 @@ import { existsSync } from 'fs'
 import os from 'os'
 import pty, { type IPty } from 'node-pty'
 import type { TerminalStartOptions, TerminalStartResult } from '../shared/ipc-contracts'
+import { loadPiDotenv } from './pi-dotenv'
 
 type TerminalDataHandler = (data: string) => void
 type TerminalExitHandler = (event: { exitCode: number; signal?: number }) => void
@@ -21,6 +22,7 @@ export class TerminalService {
     const shell = getShell()
     const cwd = getCwd(options.cwd)
     const env = {
+      ...loadPiDotenv(),
       ...process.env,
       TERM: 'xterm-256color',
     } as Record<string, string>
