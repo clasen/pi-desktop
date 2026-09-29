@@ -319,6 +319,7 @@ function createMainWindow(): BrowserWindow {
 // Bring the main window to the foreground, re-creating it if it was fully
 // closed. Used by the tray, single-instance relaunch, and macOS dock activate.
 function showMainWindow(): void {
+  if (isQuitting) return
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.show()
@@ -538,7 +539,6 @@ app.on('window-all-closed', () => {
   }
 })
 
-// Cleanup on quit
 app.on('before-quit', (event) => {
   // Gate BEFORE isQuitting is set: quitting destroys the renderer and its
   // unsaved editor buffer, and a cancelled dialog must leave the tray-hide
@@ -557,12 +557,22 @@ app.on('before-quit', (event) => {
   // the window actually close. This is the single choke point every quit path
   // flows through (menu/tray Quit, Cmd-Ctrl+Q).
   isQuitting = true
+})
+
+// All windows are closed before will-quit: no renderer can keep querying
+// workspaces or sessions while stopAll tears them down and drains its writes.
+app.on('will-quit', (event) => {
   // End snapshots and atomic session-change writes must finish before Electron exits.
   if (!shutdownComplete) {
     event.preventDefault()
     shutdownPending ??= (workspaceManager?.stopAll() ?? Promise.resolve())
       .catch((error) => appLog.warn('session-diff', 'Failed to flush session changes on quit', error))
-      .then(() => { shutdownComplete = true; app.quit() })
+      .then(() => {
+        shutdownComplete = true
+        // Native macOS terminate: is still unwinding during promise microtasks.
+        // Resume on the next turn so it cannot swallow the renewed quit request.
+        setImmediate(() => app.quit())
+      })
     return
   }
   // Release the tray icon so it doesn't linger in the notification area.
