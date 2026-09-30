@@ -1964,14 +1964,18 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   },
 
   compactContext: async () => {
+    // Set before the IPC round-trip so a second click cannot queue another
+    // compaction. compaction_start/end then drive the flag and chat messages.
+    const { sessionState } = get()
+    if (sessionState?.isCompacting) return
+    if (sessionState) set({ sessionState: { ...sessionState, isCompacting: true } })
     try {
       await window.piDesktop.session.compact()
-      // compaction_start/end events drive the chat system messages; refresh
-      // state + stats so the context-usage figures update afterwards.
-      get().refreshSessionState()
-      get().refreshSessionStats()
     } catch {
-      // Silent failure
+      // No compaction events follow a failed send, and a response timeout may
+      // fire while Pi is still compacting: ask Pi for the real state.
+      setCompacting(set, false)
+      get().refreshSessionState()
     }
   },
 
@@ -2282,6 +2286,10 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       case 'compaction_start':
       case 'compaction_end':
         handleCompaction(event as PiCompactionStartEvent | PiCompactionEndEvent, set)
+        if (event.type === 'compaction_end') {
+          get().refreshSessionState()
+          get().refreshSessionStats()
+        }
         get().addTimelineEvent({
           id: generateId(),
           type: 'compaction',
@@ -3818,6 +3826,7 @@ function handleCompaction(
   event: PiCompactionStartEvent | PiCompactionEndEvent,
   set: ZustandSet
 ): void {
+  setCompacting(set, event.type === 'compaction_start')
   if (event.type === 'compaction_start') {
     set((state) => ({
       messages: [
@@ -3856,8 +3865,25 @@ function handleCompaction(
           },
         ],
       }))
+    } else if (endEvent.errorMessage) {
+      const detail = endEvent.errorMessage
+      set((state) => ({
+        messages: [
+          ...state.messages,
+          {
+            id: generateId(),
+            role: 'system',
+            content: t('store.messages.error', { detail }),
+            timestamp: Date.now(),
+          },
+        ],
+      }))
     }
   }
+}
+
+function setCompacting(set: ZustandSet, isCompacting: boolean): void {
+  set((state) => (state.sessionState ? { sessionState: { ...state.sessionState, isCompacting } } : {}))
 }
 
 function handleAutoRetry(

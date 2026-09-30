@@ -426,7 +426,7 @@ export function Sidebar(): React.JSX.Element {
             title={t('sidebar.openProjectFolder.titleWithShortcut')}
             aria-label={t('sidebar.openProjectFolder.ariaLabel')}
           >
-            <FolderOpen size={14} />
+            <Plus size={14} />
           </button>
         </div>
         <WorkspaceSwitcher onOpenProject={() => void openProject()} />
