@@ -186,6 +186,7 @@ function TerminalSession({ workspaceId, visible }: { workspaceId: string; visibl
   return (
     <div
       ref={panelRef}
+      data-close-target="terminal"
       style={{
         display: visible ? undefined : 'none',
         height: maximized ? undefined : height,

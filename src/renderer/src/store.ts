@@ -3083,6 +3083,15 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
   setPreviewTarget: async (target) => {
     const current = get().previewTarget
+    // Opening a preview must actually show it. The diff pane and the editor
+    // pane share the side-panel slot, so a visible diff would otherwise hide
+    // the file the user just picked. Every file-opening surface routes through
+    // here, so the reveal belongs here rather than at each call site.
+    const revealPreview = async (): Promise<void> => {
+      if (target !== null && get().chatSidePanel === 'diff') {
+        await get().setChatSidePanel(null)
+      }
+    }
     // Same code file re-selected: FilePreview's load effect keys on `path`, so
     // it won't re-run and the edit buffer survives — nothing to confirm, and
     // the dirty flag must stand.
@@ -3090,12 +3099,14 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       target?.kind === 'code' && current?.kind === 'code' && target.path === current.path
     if (sameCodeFile) {
       set({ previewTarget: target })
+      await revealPreview()
       return true
     }
     if (!(await get().confirmDiscardEditorChanges())) return false
     // The dirty flag falls with the buffer it described: the component reloads
     // (or unmounts) from the new target and re-syncs from a clean slate.
     set({ previewTarget: target, editorDirty: false })
+    await revealPreview()
     return true
   },
 

@@ -854,6 +854,7 @@ export function WorkflowNavigator({ placement }: { placement: 'main' | 'sidebar'
   return (
     <section
       ref={panelRef}
+      data-close-target="workflows"
       className={clsx(
         'relative flex h-full min-h-0 w-full flex-col overflow-hidden',
         placement === 'main' ? 'bg-surface' : 'bg-sidebar'

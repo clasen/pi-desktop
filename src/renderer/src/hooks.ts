@@ -8,6 +8,7 @@ import type { WorkspaceActivationIntent } from '../../shared/ipc-contracts'
 import type { ChatWidth } from '../../shared/chat-width'
 import { t } from '../../shared/i18n'
 import { isImeComposing } from './utils/ime-composing'
+import { createFocusedCloser } from './utils/focused-close'
 
 /**
  * Subscribes to Pi events from the main process and routes them to the store.
@@ -97,16 +98,15 @@ export function useMenuActions(): void {
   const setCurrentView = useAppStore((state) => state.setCurrentView)
 
   useEffect(() => {
+    const focusedCloser = createFocusedCloser(document)
     const unsubscribe = window.piDesktop.onMenuAction((action) => {
       switch (action) {
         case 'menu:new-session':
           createNewSession()
           break
-        case 'menu:close-session': {
-          const { activeSessionRuntimeId, closeSessionTab } = useAppStore.getState()
-          if (activeSessionRuntimeId) void closeSessionTab(activeSessionRuntimeId)
+        case 'menu:close-session':
+          void focusedCloser.close()
           break
-        }
         case 'menu:new-workspace':
           setCurrentView('settings') // Open settings where workspace creation lives
           break
@@ -119,7 +119,10 @@ export function useMenuActions(): void {
       }
     })
 
-    return unsubscribe
+    return () => {
+      unsubscribe()
+      focusedCloser.dispose()
+    }
   }, [createNewSession, setCurrentView])
 }
 

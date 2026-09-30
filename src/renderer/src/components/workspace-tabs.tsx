@@ -234,7 +234,7 @@ export function WorkspaceTabs({ projectBar }: { projectBar: HTMLDivElement }): R
       </button>
     </div>, projectBar)}
     {sessionTabs.length > 0 && (
-      <div className="flex h-8 shrink-0 items-center gap-1 overflow-x-auto border-b border-border/70 px-3">
+      <div data-close-target="session" className="flex h-8 shrink-0 items-center gap-1 overflow-x-auto border-b border-border/70 px-3">
         {sessionTabs.map((runtime) => {
           const session = sessionList.find((item) => runtime.sessionPath && pathsEqual(item.path, runtime.sessionPath))
           const active = runtime.runtimeId === activeSessionRuntimeId || runtime.active

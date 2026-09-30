@@ -186,7 +186,7 @@ export function App(): React.JSX.Element {
         <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
           {showChrome && projectBar && <WorkspaceTabs projectBar={projectBar} />}
           <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-            <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+            <main data-close-target="view" className="flex min-w-0 flex-1 flex-col overflow-hidden">
               <div className={globalWorkflowOpen ? 'hidden' : 'contents'}>
                 {currentView === 'home' && <HomeScreen />}
                 {currentView === 'mission-control' && <MissionControl />}

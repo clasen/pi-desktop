@@ -1089,6 +1089,39 @@ test('setPreviewTarget applies immediately when the editor is clean', async () =
   assert.equal(useAppStore.getState().previewTarget?.path, OTHER_FILE.path)
 })
 
+test('opening a preview over the diff pane reveals the file', async () => {
+  useAppStore.setState({ previewTarget: CODE_FILE, chatSidePanel: 'diff' })
+
+  const ok = await useAppStore.getState().setPreviewTarget(OTHER_FILE)
+
+  assert.equal(ok, true)
+  assert.equal(useAppStore.getState().previewTarget?.path, OTHER_FILE.path)
+  assert.equal(
+    useAppStore.getState().chatSidePanel,
+    null,
+    'the shared side-panel slot must give way to the file the user picked'
+  )
+})
+
+test('re-selecting the already-open file over the diff pane reveals it too', async () => {
+  useAppStore.setState({ previewTarget: CODE_FILE, chatSidePanel: 'diff' })
+
+  const ok = await useAppStore.getState().setPreviewTarget({ ...CODE_FILE })
+
+  assert.equal(ok, true)
+  assert.equal(useAppStore.getState().chatSidePanel, null)
+})
+
+test('declining the dirty-editor discard leaves the diff pane in place', async () => {
+  useAppStore.setState({ previewTarget: CODE_FILE, editorDirty: true, chatSidePanel: 'diff' })
+  answerConfirm(false)
+
+  const ok = await useAppStore.getState().setPreviewTarget(OTHER_FILE)
+
+  assert.equal(ok, false)
+  assert.equal(useAppStore.getState().chatSidePanel, 'diff')
+})
+
 test('a dirty editor asks before showing another file; declining keeps it', async () => {
   useAppStore.setState({ previewTarget: CODE_FILE, editorDirty: true })
   answerConfirm(false)

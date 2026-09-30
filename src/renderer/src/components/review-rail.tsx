@@ -66,7 +66,7 @@ export function ReviewRail(): React.JSX.Element | null {
   if (!reviewOpen) return null
 
   return (
-    <aside className="flex w-80 shrink-0 flex-col border-l border-border bg-app">
+    <aside data-close-target="review" className="flex w-80 shrink-0 flex-col border-l border-border bg-app">
       <div className="shrink-0 border-b border-border">
         <div className="flex h-8 items-center gap-2 border-b border-border px-4">
           <ShieldCheck size={16} className="text-success" />

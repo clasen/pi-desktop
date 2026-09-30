@@ -17,18 +17,21 @@ export function ChatToolRail(): React.JSX.Element {
     <nav className="flex w-10 shrink-0 flex-col items-center gap-1 border-l border-border bg-sidebar py-2">
       <RailButton
         icon={<ShieldCheck size={16} />}
+        closeTarget="review"
         active={reviewOpen}
         onClick={() => useAppStore.getState().toggleReview()}
         title={t('chat.toolbar.reviewPanel')}
       />
       <RailButton
         icon={<FolderTree size={16} />}
+        closeTarget="files"
         active={sidePanel === 'files'}
         onClick={() => void setSidePanel(sidePanel === 'files' ? null : 'files')}
         title={t('chat.toolbar.fileTree')}
       />
       <RailButton
         icon={<GitCompare size={16} />}
+        closeTarget="diff"
         active={sidePanel === 'diff'}
         onClick={() => void setSidePanel(sidePanel === 'diff' ? null : 'diff')}
         title={diffShortcut
@@ -37,6 +40,7 @@ export function ChatToolRail(): React.JSX.Element {
       />
       <RailButton
         icon={<Terminal size={16} />}
+        closeTarget="terminal"
         active={terminalOpen}
         onClick={() => useAppStore.getState().toggleTerminal()}
         title={t('chat.toolbar.terminal')}
@@ -47,11 +51,13 @@ export function ChatToolRail(): React.JSX.Element {
 
 function RailButton({
   icon,
+  closeTarget,
   active,
   onClick,
   title,
 }: {
   icon: React.ReactNode
+  closeTarget: 'review' | 'files' | 'diff' | 'terminal'
   active: boolean
   onClick: () => void
   title: string
@@ -59,6 +65,7 @@ function RailButton({
   return (
     <button
       type="button"
+      data-close-target={closeTarget}
       onClick={onClick}
       aria-pressed={active}
       aria-label={title}

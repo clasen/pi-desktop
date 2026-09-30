@@ -161,7 +161,7 @@ export function DiffViewer({ onClose }: DiffViewerProps = {}): React.JSX.Element
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div data-close-target="diff" className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
       <div className="shrink-0 border-b border-border">
         <div className="flex min-h-[calc(var(--spacing)*8-1px)] flex-wrap items-center gap-2 px-4 py-0.5">
@@ -344,9 +344,7 @@ export async function openDiffFile(file: Pick<DiffFileBlock, 'newPath' | 'isDele
     relativePath,
   })
   if (!opened) return
-  const current = useAppStore.getState()
-  if (current.chatSidePanel === 'diff') await current.setChatSidePanel(null)
-  current.setCurrentView('chat')
+  useAppStore.getState().setCurrentView('chat')
 }
 
 function DiffFileEntry({

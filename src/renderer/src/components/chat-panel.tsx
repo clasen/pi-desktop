@@ -166,7 +166,7 @@ export function ChatPanel(): React.JSX.Element {
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="flex min-h-0 flex-1 overflow-x-auto overflow-y-hidden">
         {/* Keep messages and composer readable; scroll rather than squeeze below this width. */}
-        <div className="chat-center flex min-w-[30rem] flex-1 flex-col overflow-hidden">
+        <div data-close-target="session" className="chat-center flex min-w-[30rem] flex-1 flex-col overflow-hidden">
           <div className="relative flex min-h-0 flex-1 flex-col">
             {searchOpen && (
               <ChatSearch
@@ -321,7 +321,7 @@ export function ChatPanel(): React.JSX.Element {
             <div className="flex min-w-0 flex-1 flex-row-reverse overflow-hidden">
               {showFileTree && (
                 <>
-                  <div className="flex min-w-0 shrink-0 flex-col overflow-hidden" style={{ width: effectiveFilePaneWidth }}>
+                  <div data-close-target="files" className="flex min-w-0 shrink-0 flex-col overflow-hidden" style={{ width: effectiveFilePaneWidth }}>
                     <FileTree />
                   </div>
                   {(showEditor || showImage) && (
@@ -342,6 +342,7 @@ export function ChatPanel(): React.JSX.Element {
               )}
               {showEditor && (
                 <div
+                  data-close-target="preview"
                   className={clsx(
                     'flex flex-1 flex-col overflow-hidden',
                     // Separate the preview from the file tree on its right.
@@ -355,6 +356,7 @@ export function ChatPanel(): React.JSX.Element {
               )}
               {showImage && (
                 <div
+                  data-close-target="preview"
                   className="flex flex-1 flex-col overflow-hidden"
                   style={{ minWidth: MIN_EDITOR_PANE_WIDTH }}
                 >
