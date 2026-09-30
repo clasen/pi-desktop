@@ -1,25 +1,85 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { droppedAttachmentFiles, readDroppedAttachment } from './dropped-attachments'
+import { droppedComposerItems, insertFolderReferences, readDroppedAttachment } from './dropped-attachments'
 
 const file = new File(['hello'], 'notes.txt', { type: 'text/plain' })
 
-test('drop snapshots multiple files in order, excluding directories and string items', () => {
+test('mixed drops preserve files as attachments and folders as path references', async () => {
   const image = new File(['image'], 'photo.png')
-  assert.deepEqual(droppedAttachmentFiles({
+  const folder = new File([], 'folder')
+  const probed: string[] = []
+  assert.deepEqual(await droppedComposerItems({
     types: ['Files'],
     items: [
       { kind: 'file', getAsFile: () => file, webkitGetAsEntry: () => ({ isDirectory: false, isFile: true }) },
-      { kind: 'file', getAsFile: () => new File([], 'folder'), webkitGetAsEntry: () => ({ isDirectory: true, isFile: false }) },
+      { kind: 'file', getAsFile: () => folder, webkitGetAsEntry: () => ({ isDirectory: true, isFile: false }) },
       { kind: 'string', getAsFile: () => null },
       { kind: 'file', getAsFile: () => image, webkitGetAsEntry: () => null },
     ],
-  }), [file, image])
+  }, (file) => `/tmp/${file.name}`, async (path) => {
+    probed.push(path)
+    return { exists: true, isDirectory: false }
+  }), [
+    { kind: 'file', file, path: '/tmp/notes.txt' },
+    { kind: 'folder', path: '/tmp/folder' },
+    { kind: 'file', file: image, path: '/tmp/photo.png' },
+  ])
+  assert.deepEqual(probed, ['/tmp/photo.png'])
 })
 
-test('files-only drag sources are supported', () => {
-  assert.deepEqual(droppedAttachmentFiles({ types: ['Files'], files: [file] }), [file])
-  assert.deepEqual(droppedAttachmentFiles({ types: ['Files'] }), [])
+test('unknown and files-only drag sources classify folders without reading their contents', async () => {
+  const folder = new File([], 'folder')
+  const getPath = (file: File): string => `/tmp/${file.name}`
+  const pathKind = async (path: string) => ({ exists: true, isDirectory: path === '/tmp/folder' })
+  assert.deepEqual(await droppedComposerItems({
+    types: ['Files'],
+    items: [{ kind: 'file', getAsFile: () => folder, webkitGetAsEntry: () => null }],
+  }, getPath, pathKind), [{ kind: 'folder', path: '/tmp/folder' }])
+  assert.deepEqual(await droppedComposerItems({ types: ['Files'], files: [folder, file] }, getPath, pathKind), [
+    { kind: 'folder', path: '/tmp/folder' },
+    { kind: 'file', file, path: '/tmp/notes.txt' },
+  ])
+  assert.deepEqual(await droppedComposerItems({ types: ['Files'] }, getPath, pathKind), [])
+})
+
+test('drop entries and paths are captured before asynchronous classification', async () => {
+  let readable = true
+  const result = droppedComposerItems({
+    types: ['Files'],
+    items: [{ kind: 'file', getAsFile: () => { assert.ok(readable); return file } }],
+  }, (file) => { assert.ok(readable); return `/tmp/${file.name}` }, async () => {
+    await Promise.resolve()
+    assert.equal(readable, false)
+    return { exists: true, isDirectory: false }
+  })
+  readable = false
+  assert.deepEqual(await result, [{ kind: 'file', file, path: '/tmp/notes.txt' }])
+})
+
+test('pathless browser files remain attachments but folders need a real path', async () => {
+  const pathKind = async () => { throw new Error('must not probe an empty path') }
+  assert.deepEqual(await droppedComposerItems({ types: ['Files'], files: [file] }, () => '', pathKind), [
+    { kind: 'file', file, path: '' },
+  ])
+  await assert.rejects(droppedComposerItems({
+    types: ['Files'],
+    items: [{ kind: 'file', getAsFile: () => file, webkitGetAsEntry: () => ({ isDirectory: true, isFile: false }) }],
+  }, () => '', pathKind), /Could not attach file/)
+})
+
+test('folder references replace the selection, separate adjacent text, and position the caret', () => {
+  assert.deepEqual(insertFolderReferences('Review this please', 7, 11, ['/tmp/project']), {
+    value: 'Review @/tmp/project  please', caret: 21,
+  })
+  assert.deepEqual(insertFolderReferences('beforeafter', 6, 6, ['/tmp/one', '/tmp/two']), {
+    value: 'before @/tmp/one @/tmp/two after', caret: 27,
+  })
+})
+
+test('folder references quote paths with spaces or quotes on Unix and Windows', () => {
+  const paths = ['/tmp/my project', 'C:\\Users\\My Name\\project', '/tmp/a"b']
+  const expected = paths.map((path) => `@${JSON.stringify(path)}`).join(' ') + ' '
+  assert.deepEqual(insertFolderReferences('', 0, 0, paths), { value: expected, caret: expected.length })
 })
 
 test('UTF-8 documents and code are read directly from the granted File', async () => {

@@ -29,7 +29,7 @@
     "attach": {
       "allFilesFilter": "所有文件",
       "attachFailed": "无法附加文件",
-      "dropHint": "拖放文件以添加附件",
+      "dropHint": "拖放文件以添加附件，或拖放文件夹以引用路径",
       "imagesFilter": "图片",
       "onlyImagesPasted": "只能向输入框粘贴图片",
       "pasteFailed": "无法粘贴图片",

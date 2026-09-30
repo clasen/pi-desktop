@@ -29,7 +29,7 @@
     "attach": {
       "allFilesFilter": "All Files",
       "attachFailed": "Could not attach file",
-      "dropHint": "Drop files to attach",
+      "dropHint": "Drop files to attach or folders to reference",
       "imagesFilter": "Images",
       "onlyImagesPasted": "Only images can be pasted into the composer",
       "pasteFailed": "Could not paste image",

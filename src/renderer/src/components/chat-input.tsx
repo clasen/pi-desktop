@@ -30,7 +30,7 @@ import {
 } from '../../../shared/pi-command'
 import { isImeComposing } from '../utils/ime-composing'
 import { isFileDrag } from '../../../shared/folder-drop'
-import { droppedAttachmentFiles, readDroppedAttachment } from '../utils/dropped-attachments'
+import { droppedComposerItems, insertFolderReferences, readDroppedAttachment } from '../utils/dropped-attachments'
 
 const MAX_INPUT_HEIGHT = 160
 const MIN_INPUT_HEIGHT = 40
@@ -506,39 +506,76 @@ export function ChatInput(): React.JSX.Element {
     attachmentDragDepth.current = 0
     setIsDraggingAttachment(false)
     if (!isFileDrag(event.dataTransfer)) return
-    const files = droppedAttachmentFiles(event.dataTransfer)
-    // A folder-only drop still bubbles to the workspace opener.
-    if (files.length === 0) return
     event.preventDefault()
     if (isDisabled) return
 
-    const candidates = files.map((file) => ({
-      file,
-      path: window.piDesktop.system.getPathForFile(file) || `drop://${file.name}-${file.size}-${file.lastModified}`,
-    }))
+    const textarea = textareaRef.current
+    if (!textarea) return
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    const isCurrentComposer = (): boolean => textareaRef.current === textarea &&
+      (useAppStore.getState().activeWorkspace?.id ?? '') === workspaceId
+    const candidates = droppedComposerItems(
+      event.dataTransfer,
+      (file) => window.piDesktop.system.getPathForFile(file),
+      (path) => window.piDesktop.system.pathKind(path)
+    )
     pendingDrops.current += 1
     setIsReadingDrop(true)
     setAttachError(null)
     void (async () => {
       const errors: string[] = []
       try {
-        for (const { file, path } of candidates) {
+        const items = await candidates
+        const folders = items.filter((item) => item.kind === 'folder').map((item) => item.path)
+        if (folders.length) {
+          if (isCurrentComposer()) {
+            const inserted = insertFolderReferences(textarea.value, start, end, folders)
+            textarea.value = inserted.value
+            textarea.setSelectionRange(inserted.caret, inserted.caret)
+            resizeTextarea(textarea)
+            historyIndex.current = -1
+            setSlashToken(null)
+            setMention(null)
+            setMentionResults([])
+          } else {
+            const store = useAppStore.getState()
+            const value = store.composerDrafts[workspaceId] ?? ''
+            store.saveComposerDraft(workspaceId, insertFolderReferences(value, start, end, folders).value)
+          }
+        }
+        for (const item of items) {
+          if (item.kind !== 'file') continue
+          const { file } = item
+          const path = item.path || `drop://${file.name}-${file.size}-${file.lastModified}`
           try {
             const result = await readDroppedAttachment(file)
             const next: Attachment = { ...result, path }
-            setAttachments((prev) => prev.some((a) => a.path === path) ? prev : [...prev, next])
+            if (isCurrentComposer()) {
+              setAttachments((prev) => prev.some((a) => a.path === path) ? prev : [...prev, next])
+            } else {
+              const store = useAppStore.getState()
+              const previous = store.composerAttachmentDrafts[workspaceId] ?? []
+              if (!previous.some((a) => a.path === path)) {
+                store.saveComposerAttachments(workspaceId, [...previous, next])
+              }
+            }
           } catch (error) {
             errors.push(`${file.name}: ${error instanceof Error ? error.message : t('chat.attach.attachFailed')}`)
           }
         }
-        if (errors.length) setAttachError(errors.join('\n'))
+        if (errors.length && isCurrentComposer()) setAttachError(errors.join('\n'))
+      } catch (error) {
+        if (isCurrentComposer()) {
+          setAttachError(error instanceof Error ? error.message : t('chat.attach.attachFailed'))
+        }
       } finally {
         pendingDrops.current -= 1
         setIsReadingDrop(pendingDrops.current > 0)
-        textareaRef.current?.focus()
+        if (isCurrentComposer()) textarea.focus()
       }
     })()
-  }, [isDisabled, t])
+  }, [isDisabled, resizeTextarea, t, workspaceId])
 
   const removeAttachment = useCallback((index: number) => {
     setAttachments((prev) => prev.filter((_, i) => i !== index))
