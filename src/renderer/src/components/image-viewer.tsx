@@ -11,7 +11,7 @@ type ImageViewerError = PreviewLoadError<'unsupportedFile' | 'readFailed'>
  * image. Loads via readAttachment (absolute path, works outside the workspace)
  * and renders the base64 payload as a data URL.
  */
-export function ImageViewer(): React.JSX.Element | null {
+export function ImageViewer({ ref }: { ref?: React.Ref<HTMLDivElement> } = {}): React.JSX.Element | null {
   const { t } = useTranslation()
   const target = useAppStore((state) => state.previewTarget)
   const image = target?.kind === 'image' ? target : null
@@ -59,7 +59,7 @@ export function ImageViewer(): React.JSX.Element | null {
   if (!image) return null
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-[var(--color-app)]">
+    <div ref={ref} tabIndex={-1} className="flex flex-1 flex-col overflow-hidden bg-[var(--color-app)] outline-none">
       {/* Header */}
       <div className="flex h-8 shrink-0 items-center justify-between border-b border-border px-3">
         <div className="flex min-w-0 items-center gap-2">

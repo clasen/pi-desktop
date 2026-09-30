@@ -3088,7 +3088,9 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     // the file the user just picked. Every file-opening surface routes through
     // here, so the reveal belongs here rather than at each call site.
     const revealPreview = async (): Promise<void> => {
-      if (target !== null && get().chatSidePanel === 'diff') {
+      if (target === null) return
+      set({ composerFocusRequested: false })
+      if (get().chatSidePanel === 'diff') {
         await get().setChatSidePanel(null)
       }
     }

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import { afterEach, beforeEach, test } from 'node:test'
+import { readFileSync } from 'node:fs'
+import ts from 'typescript'
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { I18nextProvider } from 'react-i18next'
@@ -29,6 +31,25 @@ class FocusDocument {
     this.listeners.get(type)?.({ target } as unknown as Event)
   }
   get listenerCount(): number { return this.listeners.size }
+}
+
+// Exercise ChatPanel's real focus effect without loading its browser-only children.
+function focusPreview(bindings: Record<string, unknown>): void {
+  const source = ts.createSourceFile('chat-panel.tsx',
+    readFileSync(new URL('../components/chat-panel.tsx', import.meta.url), 'utf8'),
+    ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  let expression: string | undefined
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && node.expression.getText(source) === 'useLayoutEffect'
+      && node.arguments[1]?.getText(source) === '[previewTarget, previewVisible]') {
+      expression = node.arguments[0].getText(source)
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(source)
+  assert.ok(expression, 'Missing preview focus effect')
+  const code = ts.transpile(`const effect = ${expression}`, { target: ts.ScriptTarget.ES2022 })
+  new Function(...Object.keys(bindings), `${code}; effect()`)(...Object.values(bindings))
 }
 
 let closedSessions: string[]
@@ -115,6 +136,51 @@ test('a closed panel rail button never dismisses another open panel', async () =
   assert.equal(useAppStore.getState().chatSidePanel, 'files')
   assert.equal(useAppStore.getState().composerFocusRequested, false)
   assert.deepEqual(closedSessions, [])
+})
+
+test('opening a file from browse focuses its preview and closes the file, not the browser', async () => {
+  for (const kind of ['code', 'image'] as const) {
+    useAppStore.setState({ chatSidePanel: 'files', previewTarget: null, composerFocusRequested: true })
+    const browser = new Target('files')
+    const preview = new Target('preview')
+    document.interact('focusin', new Target(null, browser))
+    await useAppStore.getState().setPreviewTarget({ kind, path: '/project/file', name: 'file', relativePath: 'file' })
+    assert.equal(useAppStore.getState().composerFocusRequested, false)
+    focusPreview({
+      previewTarget: useAppStore.getState().previewTarget, previewVisible: true,
+      previewPaneRef: { current: { focus: () => document.interact('focusin', preview) } },
+    })
+    assert.equal(document.activeElement, preview)
+    await closer.close()
+    assert.equal(useAppStore.getState().previewTarget, null)
+    assert.equal(useAppStore.getState().chatSidePanel, 'files')
+    assert.deepEqual(closedSessions, [])
+    document.interact('pointerdown', browser)
+    await closer.close()
+    assert.equal(useAppStore.getState().chatSidePanel, null)
+  }
+})
+
+test('declining a file change preserves its preview and pending composer focus', async () => {
+  useAppStore.setState({ editorDirty: true, composerFocusRequested: true })
+  const original = useAppStore.getState().previewTarget
+  const opening = useAppStore.getState().setPreviewTarget({ kind: 'code', path: '/project/new.ts', name: 'new.ts' })
+  useAppStore.getState().resolveConfirm(false)
+  assert.equal(await opening, false)
+  assert.equal(useAppStore.getState().previewTarget, original)
+  assert.equal(useAppStore.getState().composerFocusRequested, true)
+})
+
+test('a preview hidden behind diff or another view never takes focus', () => {
+  let focused = 0
+  const previewTarget = useAppStore.getState().previewTarget
+  for (const state of [
+    { previewTarget, previewVisible: false },
+    { previewTarget: null, previewVisible: true },
+  ]) {
+    focusPreview({ ...state, previewPaneRef: { current: { focus: () => { focused++ } } } })
+  }
+  assert.equal(focused, 0)
 })
 
 test('refreshing panel contents does not lose its close target', async () => {

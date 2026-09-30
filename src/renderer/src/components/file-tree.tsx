@@ -522,7 +522,7 @@ const EDITOR_INPUT_DEBOUNCE_MS = 150
 
 type FilePreviewError = PreviewLoadError<'readFailed' | 'saveFailed'>
 
-export function FilePreview(): React.JSX.Element | null {
+export function FilePreview({ ref }: { ref?: React.Ref<HTMLDivElement> } = {}): React.JSX.Element | null {
   const { t } = useTranslation()
   const target = useAppStore((state) => state.previewTarget)
   const file = target?.kind === 'code' ? target : null
@@ -683,7 +683,9 @@ export function FilePreview(): React.JSX.Element | null {
 
   return (
     <div
-      className="flex flex-1 flex-col overflow-hidden bg-[var(--color-app)]"
+      ref={ref}
+      tabIndex={-1}
+      className="flex flex-1 flex-col overflow-hidden bg-[var(--color-app)] outline-none"
       onKeyDownCapture={handleKeyDown}
     >
       {/* Header */}

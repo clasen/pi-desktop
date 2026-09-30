@@ -26,7 +26,7 @@ import { DiffViewer } from './diff-viewer'
 import { TerminalPanel } from './terminal'
 import { useChatScroll, useChatVisible, useChatWidth } from '../hooks'
 import { messageColumnClass } from '../utils/chat-width'
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { useState, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { clsx } from 'clsx'
 import piLogo from '../assets/pi-logo.svg'
@@ -65,6 +65,7 @@ export function ChatPanel(): React.JSX.Element {
   const fileSearchOpen = useAppStore((state) => state.fileSearchOpen)
   const toggleFileSearch = useAppStore((state) => state.toggleFileSearch)
   const previewTarget = useAppStore((state) => state.previewTarget)
+  const previewPaneRef = useRef<HTMLDivElement>(null)
   const messageColumn = messageColumnClass(useChatWidth())
 
   // sidePanel lives in the store so it survives view switches (e.g. Settings
@@ -87,6 +88,11 @@ export function ChatPanel(): React.JSX.Element {
   // decides whether chat is on screen. Without it the scroll hook never sees
   // the hidden→shown edge and cannot re-anchor the reading position.
   const chatVisible = useChatVisible()
+  const previewVisible = chatVisible && sidePanel !== 'diff'
+  useLayoutEffect(() => {
+    if (!previewVisible || !previewTarget) return
+    previewPaneRef.current?.focus({ preventScroll: true })
+  }, [previewTarget, previewVisible])
   const { scrollRef, onScroll, atBottom, scrollToBottom } = useChatScroll(chatVisible, composerPadPx)
 
   // In-conversation search (Ctrl/Cmd+F while in chat). The nonce bumps on every
@@ -351,7 +357,7 @@ export function ChatPanel(): React.JSX.Element {
                   // The same constant the file pane's ceiling reserves for.
                   style={{ minWidth: MIN_EDITOR_PANE_WIDTH }}
                 >
-                  <FilePreview />
+                  <FilePreview ref={previewPaneRef} />
                 </div>
               )}
               {showImage && (
@@ -360,7 +366,7 @@ export function ChatPanel(): React.JSX.Element {
                   className="flex flex-1 flex-col overflow-hidden"
                   style={{ minWidth: MIN_EDITOR_PANE_WIDTH }}
                 >
-                  <ImageViewer />
+                  <ImageViewer ref={previewPaneRef} />
                 </div>
               )}
             </div>
