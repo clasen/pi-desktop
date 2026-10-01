@@ -20,11 +20,23 @@ curl -fsSL https://raw.githubusercontent.com/clasen/pi-desktop/master/install.sh
 iex (irm https://raw.githubusercontent.com/clasen/pi-desktop/master/install.ps1)
 ```
 
-That's it. One command, every platform. The script grabs the latest release, checks its SHA-256, and installs it. No Node, no compiler. If you don't have Pi or OMP yet, it offers to install Pi for you (you can say no). To update, close Pi Desktop and run the same command again.
+That's it for the app. One command, every platform. The script grabs the latest release, checks its SHA-256, and installs it. No Node, no compiler. To update, close Pi Desktop and run the same command again.
 
 - **macOS** (Apple Silicon and Intel): `~/Applications/Pi Desktop.app`
 - **Linux** (x86_64): `~/.local/share/pi-desktop`, with a `pi-desktop` launcher in `~/.local/bin`
 - **Windows** (x64): runs the normal setup wizard
+
+**You also need the agent itself.** Pi Desktop is the window; [Pi](https://pi.dev) (or [OMP](https://github.com/can1357/oh-my-pi)) does the work. If neither is installed, the script asks whether to install Pi for you. Say yes and you're done. Said no, or skipped it? Install Pi yourself:
+
+```bash
+curl -fsSL https://pi.dev/install.sh | sh                 # macOS / Linux
+```
+
+```powershell
+powershell -c "irm https://pi.dev/install.ps1 | iex"      # Windows
+```
+
+Open a new terminal afterwards so your PATH picks it up. Already have Pi or OMP somewhere unusual? Point to it in **Settings → Agent Configuration**.
 
 Builds aren't signed yet. If Windows SmartScreen gets nervous, click **More info → Run anyway**. If an older Windows PowerShell fails with *"The underlying connection was closed"*, use this instead:
 
