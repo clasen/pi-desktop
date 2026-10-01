@@ -4,7 +4,7 @@ A desktop app for the [Pi](https://pi.dev) and [oh-my-pi](https://github.com/can
 
 ![Pi Desktop: chat, session diff, and terminal](docs/screenshots/pi-desktop-chat-diff-terminal.png)
 
-It's alpha. It works, we use it every day, and it will still surprise you now and then.
+It's alpha. It works, I use it every day, and it will still surprise you now and then.
 
 ## Install
 
@@ -20,36 +20,19 @@ curl -fsSL https://raw.githubusercontent.com/clasen/pi-desktop/master/install.sh
 iex (irm https://raw.githubusercontent.com/clasen/pi-desktop/master/install.ps1)
 ```
 
-That's it. The script grabs the latest release, checks its SHA-256, and installs it. No Node, no compiler. If you don't have Pi or OMP yet, it offers to install Pi for you (you can say no). Close Pi Desktop before updating.
+That's it. One command, every platform. The script grabs the latest release, checks its SHA-256, and installs it. No Node, no compiler. If you don't have Pi or OMP yet, it offers to install Pi for you (you can say no). To update, close Pi Desktop and run the same command again.
+
+- **macOS** (Apple Silicon and Intel): `~/Applications/Pi Desktop.app`
+- **Linux** (x86_64): `~/.local/share/pi-desktop`, with a `pi-desktop` launcher in `~/.local/bin`
+- **Windows** (x64): runs the normal setup wizard
+
+Builds aren't signed yet. If Windows SmartScreen gets nervous, click **More info → Run anyway**. If an older Windows PowerShell fails with *"The underlying connection was closed"*, use this instead:
+
+```powershell
+curl.exe -fsSL https://raw.githubusercontent.com/clasen/pi-desktop/master/install.ps1 | Out-String | Invoke-Expression
+```
 
 Piping a script into your shell is a matter of trust. If you'd rather read it first, [it's right here](install.sh) ([Windows version](install.ps1)).
-
-<details>
-<summary>Where it goes, and what to do when something complains</summary>
-
-- **macOS** (Apple Silicon and Intel): installs to `~/Applications/Pi Desktop.app`. No admin password.
-- **Linux** (x86_64): installs to `~/.local/share/pi-desktop` with a `pi-desktop` launcher in `~/.local/bin`. No FUSE needed.
-- **Windows** (x64): runs the normal setup wizard.
-
-The builds aren't signed yet, so operating systems get nervous:
-
-- **Windows SmartScreen:** click **More info → Run anyway**.
-- **macOS says the app "is damaged and can't be opened"** (usually after downloading the `.dmg` from a browser): it isn't damaged, that's just how Gatekeeper describes unsigned apps. Don't trash it. Run this once:
-
-  ```bash
-  xattr -dr com.apple.quarantine "/Applications/Pi Desktop.app"
-  ```
-
-- **macOS says "Apple cannot check it for malicious software":** **System Settings → Privacy & Security → Open Anyway**.
-- **Old Windows PowerShell fails with *"The underlying connection was closed"*:** use `curl.exe` instead:
-
-  ```powershell
-  curl.exe -fsSL https://raw.githubusercontent.com/clasen/pi-desktop/master/install.ps1 | Out-String | Invoke-Expression
-  ```
-
-Prefer clicking? Every build is on the [Releases](https://github.com/clasen/pi-desktop/releases) page: AppImage for Linux, `.dmg` for macOS, installer or portable `.exe` for Windows. You'll need [Pi](https://pi.dev) or [OMP](https://github.com/can1357/oh-my-pi) installed separately; pick it in **Settings → Agent Configuration**.
-
-</details>
 
 ## Or make it yours
 
@@ -172,8 +155,14 @@ Windows is community-tested. If you hit something not listed here, [open an issu
 
 </details>
 
+## Standing on good shoulders
+
+Pi Desktop started as [FaqFirebase/pi-desktop](https://github.com/FaqFirebase/pi-desktop) ([pi-desktop.com](https://pi-desktop.com)). They built something genuinely well thought out, and they were remarkably open to my pull requests, which is rarer than it should be. Thank you.
+
+This fork is that same app, bent to my taste in how it looks and how it works. If you like where it's going, great. If you don't, the original is excellent too, and both are a `git clone` away from being whatever you want.
+
 ## Links
 
-[pi-desktop.com](https://pi-desktop.com) · [pi.dev](https://pi.dev) · [Packages](https://pi.dev/packages) · [Issues](https://github.com/clasen/pi-desktop/issues)
+[Original project](https://github.com/FaqFirebase/pi-desktop) · [pi.dev](https://pi.dev) · [Packages](https://pi.dev/packages) · [Issues](https://github.com/clasen/pi-desktop/issues)
 
 Apache 2.0
