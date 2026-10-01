@@ -1,79 +1,114 @@
 # Pi Desktop
 
-A desktop GUI for the [Pi](https://pi.dev) and [oh-my-pi](https://github.com/can1357/oh-my-pi) coding agents. Chat, manage projects, browse files, run commands, and install packages in one window.
+A desktop app for the [Pi](https://pi.dev) and [oh-my-pi](https://github.com/can1357/oh-my-pi) coding agents. Your projects, their sessions, and what each one changed, all in one window. No tab archaeology required.
 
-![Pi Desktop — Chat, diff viewer, and integrated terminal](docs/screenshots/pi-desktop-chat-diff-terminal.png)
+![Pi Desktop: chat, session diff, and terminal](docs/screenshots/pi-desktop-chat-diff-terminal.png)
 
-Still in alpha, so expect rough edges.
+It's alpha. It works, we use it every day, and it will still surprise you now and then.
 
-## What it does
+## Install
 
-- Streaming chat with thinking blocks, tool use, and rich rendering: bundled fonts and color emoji, inline SVG preview, and clickable file links that open a preview pane. Consecutive tool calls fold into collapsible groups. File reads show as line-numbered, syntax-highlighted code and edits as diffs
-- Find within a conversation (`Ctrl/Cmd+F`); streaming follows new output only while you're at the bottom, with a jump-to-bottom control
-- Composer file mentions (type `@` to insert a path reference for Pi to read) and `Up`/`Down` to recall prompts sent in the current session
-- Home dashboard with usage stats: messages, tokens, active-day streaks, peak hour, and a per-model breakdown
-- [Multi-Agent Council Planning](#multi-agent-council-planning), where Pi, Claude, and Codex plan together and reach consensus before Pi builds (opt-in)
-- [TypeSafe Jev](#typesafe-jev): save your TypeSafe API key once and install the Jev skill, so Pi and OMP can use TypeSafe without asking for the key (opt-in)
-- [Voice dictation](#voice-dictation): click the mic in the composer and talk; your words appear as you speak and it stops after a short pause. Speech-to-text runs on your machine with a model you pick, so nothing is sent to a server (opt-in, no model ships by default)
-- Quick switcher (`Ctrl/Cmd+K`) for skills, prompt templates, built-in commands, workspaces, sessions, and files; `/` in the composer for commands
-- Skills browser, session fork/branch tree, and one-click context compaction
-- Session naming (read from Pi) with inline rename, and a themed in-app confirmation for delete
-- Custom models & providers editor in Settings, which edits your engine's models file (`~/.pi/agent/models.json` for Pi, `~/.omp/agent/models.yml` for OMP)
-- Multiple workspaces, with an independent agent process per live session, so a turn keeps running when you switch away from it; Mission Control and sidebar activity dots surface background work across projects, with optional desktop notifications when a session finishes, fails, or waits for approval
-- New Task launcher starts a real fresh Pi session in a selected project, optionally in an isolated Git worktree, and sends the issue immediately while work continues in the background; matching task metadata, explicit branches, and GitHub PR URLs reuse an existing local worktree when found
-- Diff Review conveyor with explicit Commit → Push → PR actions, upstream-aware GitHub CLI PR creation, and exact notification clicks back to the finished session
-- Diagnostics view: Pi/OMP install and PATH resolution, provider configuration, permissions, and recent errors
-- Review rail (toggleable) with permissions, approvals, changed files, and session status
-- Custom permission rules: allow/deny glob rules per Pi tool that refine the permission modes, with per-workspace rule files, import/export, and live edits that apply without restarting Pi
-- File tree, code/image/PDF/HTML preview panes, code editor (CodeMirror 6 with syntax highlighting), diff viewer, file search
-- Terminal with ANSI colors
-- Package browser connected to pi.dev/packages, with instant local search and update checks for installed packages
-- Session tags, model switching, live-preview settings, themes (7 built-ins plus System, and custom themes you can create in-app, import, export, or install from a URL)
-- [Translatable interface](#languages): pick the language in Settings (English and Simplified Chinese ship today)
+**macOS / Linux**
 
-## Review rail
+```bash
+curl -fsSL https://raw.githubusercontent.com/clasen/pi-desktop/master/install.sh | bash
+```
 
-The right-side Review rail keeps safety and working-tree state visible while you chat with Pi. Toggle it from the chat toolbar (hidden by default, so it doesn't compete for space with file/image previews).
+**Windows** (PowerShell, not Command Prompt)
 
-Changed files use readable status badges:
+```powershell
+iex (irm https://raw.githubusercontent.com/clasen/pi-desktop/master/install.ps1)
+```
 
-| Badge | Meaning |
-|-------|---------|
-| `NEW` | Untracked new file |
-| `MOD` | Existing tracked file was modified |
-| `DEL` | Tracked file was deleted |
-| `ADD` | New file staged in git |
-| `STG` | Modified file staged in git |
-| `REN` | File was renamed |
+That's it. The script grabs the latest release, checks its SHA-256, and installs it. No Node, no compiler. If you don't have Pi or OMP yet, it offers to install Pi for you (you can say no). Close Pi Desktop before updating.
 
-## Pi and OMP engines
+Piping a script into your shell is a matter of trust. If you'd rather read it first, [it's right here](install.sh) ([Windows version](install.ps1)).
 
-Pi Desktop speaks Pi's RPC protocol directly, so it can run either the standard `pi` CLI or the compatible `omp` binary from [oh-my-pi](https://github.com/can1357/oh-my-pi). **Settings → Agent Configuration → Agent Installation** scans for installed engines, lets you select one, and also supports a custom executable or install directory.
+<details>
+<summary>Where it goes, and what to do when something complains</summary>
 
-Each engine keeps its own sessions: Pi writes to `~/.pi/agent/sessions`, OMP to `~/.omp/agent/sessions`. The app reads both, so switching engines never hides your history. When sessions from both appear in one list, each row is tagged `Pi` or `OMP`, and opening one starts the engine that wrote it.
+- **macOS** (Apple Silicon and Intel): installs to `~/Applications/Pi Desktop.app`. No admin password.
+- **Linux** (x86_64): installs to `~/.local/share/pi-desktop` with a `pi-desktop` launcher in `~/.local/bin`. No FUSE needed.
+- **Windows** (x64): runs the normal setup wizard.
 
-OMP's protocol-v2 large-frame transport is negotiated automatically, and model-specific thinking efforts, including `max`, are shown when advertised. Its native `read`, `grep`, and `glob` tools are used for Plan / Read-only mode, and its plugin install/update/remove verbs are mapped behind the existing package actions.
+The builds aren't signed yet, so operating systems get nervous:
+
+- **Windows SmartScreen:** click **More info → Run anyway**.
+- **macOS says the app "is damaged and can't be opened"** (usually after downloading the `.dmg` from a browser): it isn't damaged, that's just how Gatekeeper describes unsigned apps. Don't trash it. Run this once:
+
+  ```bash
+  xattr -dr com.apple.quarantine "/Applications/Pi Desktop.app"
+  ```
+
+- **macOS says "Apple cannot check it for malicious software":** **System Settings → Privacy & Security → Open Anyway**.
+- **Old Windows PowerShell fails with *"The underlying connection was closed"*:** use `curl.exe` instead:
+
+  ```powershell
+  curl.exe -fsSL https://raw.githubusercontent.com/clasen/pi-desktop/master/install.ps1 | Out-String | Invoke-Expression
+  ```
+
+Prefer clicking? Every build is on the [Releases](https://github.com/clasen/pi-desktop/releases) page: AppImage for Linux, `.dmg` for macOS, installer or portable `.exe` for Windows. You'll need [Pi](https://pi.dev) or [OMP](https://github.com/can1357/oh-my-pi) installed separately; pick it in **Settings → Agent Configuration**.
+
+</details>
+
+## Or make it yours
+
+Pi Desktop is a plain Electron + React + TypeScript app. If something bugs you, change it:
+
+```bash
+git clone https://github.com/clasen/pi-desktop.git
+cd pi-desktop
+npm install --ignore-scripts=false
+npm run dev
+```
+
+Point Pi at its own source code and ask it to fix the thing you don't like. It's oddly satisfying.
+
+Want your own builds? Bump the version in `package.json` and `package-lock.json`, push a matching `v<version>` tag, and GitHub Actions builds and publishes installers for every platform on your fork. Change the repo name in `install.sh` and `install.ps1` and the one-liners above install your version instead.
+
+Building on Windows takes a few extra steps (a C++ toolchain for the terminal). See [Building on Windows](#building-on-windows) below. [AGENTS.md](AGENTS.md) and [CONTRIBUTING.md](CONTRIBUTING.md) explain how the code is laid out.
+
+## Why bother
+
+**Projects and sessions you can actually read.** Projects sit as tabs across the top, their sessions down the side. Each one tells you whether it's working, waiting for your approval, done, or broken. If you've used the Codex or Claude Code apps, it'll feel familiar, just with less squinting to figure out which project still has something running.
+
+**See what this session changed. Not the whole repo. This session.** The diff viewer can show only the files the current session touched, including changes made through shell commands. Review them, revert a file, then **Commit** or **Commit + Push** right there. Leave the message empty and the session's model writes one for you.
+
+**Things keep running when you look away.** Every live session gets its own agent process. Switch projects mid-turn and the turn keeps going. **Mission Control** shows everything in flight, and you can get a desktop notification when something finishes, fails, or needs you.
+
+**Pi or OMP, your pick.** It runs the standard `pi` CLI or `omp` from oh-my-pi. Each keeps its own session history, and the app reads both. Open an old session and it starts the engine that wrote it.
+
+## Everything else
+
+- Streaming chat with thinking blocks, collapsible tool calls, inline diffs for edits, and file names that open a preview when you click them
+- `@` to mention files, drop a folder in to open it as a project, paste images straight into the composer
+- **New Task** starts a fresh background session, optionally in its own Git worktree
+- Branch switcher, file tree, code editor, image/PDF/HTML preview, and a real terminal
+- `Ctrl/Cmd+K` finds commands, skills, projects, sessions, and files. Every shortcut can be changed in **Settings → Keyboard shortcuts**
+- Fork and branch sessions, one-click context compaction, session tags, inline rename
+- Package and skill browser connected to [pi.dev/packages](https://pi.dev/packages), with update checks
+- Custom models and providers editor
+- Home dashboard with usage stats, for those who like to know how many tokens went into that one-line fix
+- Diagnostics view for when the agent won't start and you'd like to know why
+
+Opt-in extras, off until you turn them on:
+
+- **Voice dictation.** Click the mic and talk. Speech-to-text runs on your machine with a model you choose (Moonshine is small and fast for English, Whisper and Parakeet V3 cover many languages). Nothing goes to a server, and nothing downloads until you pick a model in **Settings → Voice dictation**.
+- **Multi-Agent Council.** Pi, Claude, and Codex each draft a plan, read each other's, and Pi merges them into one. All of them plan read-only; only Pi builds. Yes, it burns more tokens. Enable it in **Settings → Multi-Agent Council Planning**.
+- **[TypeSafe Jev](https://docs.typesafe.ai/introduction).** Save your TypeSafe API key once and install the Jev skill, so Pi and OMP can use it without asking for the key each time. Set it up in **Settings → TypeSafe Jev**.
 
 ## Permissions
 
-Four base modes control what Pi may do, selectable from the Review rail or **Settings → Behavior**:
+Pick how much rope Pi gets, from the composer or **Settings → Behavior**:
 
-| Mode | Behavior |
-|------|----------|
-| Plan / Read-only | Only read/search/list tools are enabled; edits and shell commands are blocked |
-| Ask before edits | Pi asks before file edits and shell commands |
-| Ask before commands | Pi asks before shell commands |
-| Trusted | All tools enabled |
+| Mode | Pi can… |
+|------|---------|
+| Plan / Read-only | read and search. That's it |
+| Ask before edits | do anything, but asks before editing files or running commands |
+| Ask before commands | edit freely, but asks before running commands |
+| Trusted | do whatever it wants. You did say "trusted" |
 
-Custom permission rules refine the modes with allow/deny rules per Pi tool, edited in **Settings → Behavior → Permission rules**:
-
-- A rule is an action (`allow`/`deny`), a tool name (`bash`, `edit`, `write`, `read`, … or `*` for any), and an optional glob pattern matched against the tool's input: the shell command for `bash`, the file path for file tools. `*` is the only wildcard.
-- Precedence: deny beats allow, and allow beats the mode default. Deny rules are enforced in every mode; a `deny * *.env*` rule holds even in Trusted. Allow rules skip the confirmation prompt in the ask modes.
-- Rule edits apply to the next tool call without restarting Pi.
-- Rules come in two scopes. The **Global | This workspace** tabs edit either your global rules or the active workspace's `.pi-desktop/permission-rules.json`. A workspace file is gated by workspace trust: once you trust the workspace it fully replaces the global list while you work there. Until then (the default for a repo you just opened) only its *deny* rules apply, layered on top of your global rules, and its *allow* rules are ignored, so a cloned repo can tighten your permissions but never loosen them. Opening a workspace whose file contains allow rules prompts you to trust it; you can also Trust/Revoke from the **This workspace** tab. Import/Export moves rule lists as JSON files, and the workspace file can be hand-edited or committed with a repo. The app picks up changes live.
-- One honest caveat: rules match raw strings, with no path canonicalization or command parsing. Treat them as a guardrail against accidents rather than a security sandbox, and keep even a trusted workspace's allow rules narrow.
-
-Example rules:
+On top of that you can add allow/deny rules per tool, like:
 
 ```json
 { "action": "allow", "tool": "bash", "match": "npm test*" }
@@ -81,273 +116,46 @@ Example rules:
 { "action": "deny",  "tool": "*",    "match": "*.env*" }
 ```
 
-## Custom themes
+Deny always wins, even in Trusted. Rules can live globally or in a project's `.pi-desktop/permission-rules.json`. A project's own *allow* rules are ignored until you trust that project, so a repo you just cloned can tighten your rules but never loosen them.
 
-Pi Desktop ships 7 built-in themes (Dark, Light, Nord, Gruvbox, Breeze Dark, Breeze Light, Breeze Claudius) plus System, and you can create your own from **Settings → Appearance**. With **System** selected, **Light Theme** and **Dark Theme** choose which installed theme each OS mode uses.
+Fair warning: rules match raw text. There's no command parsing behind them. Think of them as a guardrail against accidents, not a sandbox.
 
-To build one in the app, click **Create theme** to fork the currently active theme, or **Edit theme** to keep editing one you already created. Pick 7 seed colors (app background, surface, text, accent, success, warning, error) and a dark or light kind; every other color in the app is derived from those seeds. Changes preview live across the whole window as you edit. Two disclosures cover finer control:
+## Themes and languages
 
-- **Advanced** lets you override any of the ~30 derived tokens individually (borders, hovers, scrollbars, and so on) instead of accepting the automatic derivation.
-- **Syntax colors** overrides the code-highlighting colors (keywords, strings, comments, etc.) used by the code editor and diff viewer.
+Seven built-in themes plus System. Want your own? **Settings → Appearance → Create theme**: pick seven colors and the app derives the rest. Themes are small JSON files you can import, export, or install from a URL. There's a [community gallery](https://github.com/FaqFirebase/pi-desktop-themes) if you'd rather borrow someone else's taste.
 
-Themes you create are listed alongside the built-ins in the **Theme** dropdown. Rename one by editing its name in the editor, duplicate one by selecting it and clicking **Create theme** (which forks whatever is active), and delete one with the **Delete** button that appears next to the dropdown whenever a custom theme is selected.
+The interface speaks English and Simplified Chinese. Adding a language is one JSON file; see [Translations](CONTRIBUTING.md#translations).
 
-To share a theme, use **Import** and **Export** to move it as a `.json` file, or paste an `https://` URL into **Install from URL** to fetch and install one directly (HTTP is rejected, and downloads are size-capped).
+## Building on Windows
 
-A theme file uses the `pi-theme/v1` format: JSON with a `$schema`, a `name`, a `kind` (`"dark"` or `"light"`), and 7 `seeds`. That's enough for a complete, valid theme; everything else is derived automatically via CSS `color-mix()`:
+Windows needs a C++ toolchain because the terminal (`node-pty`) compiles a native module.
 
-```json
-{
-  "$schema": "pi-theme/v1",
-  "name": "My Theme",
-  "kind": "dark",
-  "seeds": {
-    "app": "#0a0a0a",
-    "surface": "#171717",
-    "text": "#f5f5f5",
-    "accent": "#2563eb",
-    "success": "#34d399",
-    "warning": "#facc15",
-    "error": "#f87171"
-  }
-}
-```
+<details>
+<summary>Step by step</summary>
+1. Install these **before** cloning:
+   - [Git for Windows](https://git-scm.com/download/win)
+   - [Node.js LTS](https://nodejs.org)
+   - [Visual Studio Build Tools **2022**](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) with the **Desktop development with C++** workload, plus **Spectre-mitigated libs for v143 toolset** (under *Individual components*). Not 2026: its toolset lacks the Spectre libs and `npm install` fails with `MSB8040`.
+2. Keep the repo, and your projects, out of `Documents` and `Desktop`. Windows **Controlled Folder Access** silently blocks writes there, which shows up as random `EPERM`/`EACCES` errors. Something like `C:\dev` is fine. Adding that folder to the Defender exclusions also makes `npm install` much faster.
+3. Clone and run:
 
-Two optional top-level objects let you pin exact values instead of relying on derivation: `overrides` (any derived token, e.g. `border`, `scrollbar`, `accent-hover`) and `syntax` (code-highlighting colors, e.g. `keyword`, `string`, `comment`). Omit both and the theme still renders correctly from the 7 seeds alone.
+   ```powershell
+   git clone https://github.com/clasen/pi-desktop.git C:\dev\pi-desktop
+   cd C:\dev\pi-desktop
+   npm install --ignore-scripts=false
+   powershell -c "irm https://pi.dev/install.ps1 | iex"   # if you don't have Pi yet; then open a new terminal
+   npm run dev
+   ```
 
-User theme files live in the app's user-data directory under `themes/` (on Linux, `~/.config/pi-desktop/themes/`).
+| Error | Fix |
+|-------|-----|
+| `MSB8040`: Spectre libs missing | Uninstall VS Build Tools 2026, install 2022 with the v143 Spectre libs |
+| `electron-vite is not recognized` | `npm install` didn't finish. Run it again |
+| `EPERM` / `EACCES` writing files | Controlled Folder Access. Move the folder (step 2), or allow `Pi Desktop.exe` (plus `node.exe`, `git.exe`, `electron.exe` for development) under **Windows Security → Ransomware protection → Allow an app through Controlled folder access**. The portable `.exe` extracts to a new temp folder each launch, so use the installer if you go the allow-list route |
+| Pi shows "error" in the status popover | Pi isn't installed or the PATH hasn't refreshed. Open a new terminal |
+| Electron binary missing after install | Add the folder to Defender exclusions and run `npm install` again. Still missing? Download it by hand (below) |
 
-There's also a community gallery at [pi-desktop-themes](https://github.com/FaqFirebase/pi-desktop-themes): copy any theme's raw URL into **Install from URL**, or submit your own with a pull request.
-
-## Languages
-
-Pick the interface language in **Settings → Appearance → Language**. **System default** follows your operating system's language list and falls back to English. The change applies when you click **Save Settings**, with no restart.
-
-English and Simplified Chinese are bundled today. Each language is one JSON file in `resources/locales/<code>/translation.json`; see [Translations](CONTRIBUTING.md#translations) to add one.
-
-Only the app's own text is translated. Chat replies, file contents, and names of models, packages, and sessions stay as they are. Logs and the copied Diagnostics report stay in English, so bug reports stay readable.
-
-## Multi-Agent Council Planning
-
-Pi, Claude, and Codex each produce an initial plan, share and converge, and Pi presents the agreed consensus plan *before* anything is built. All members plan read-only; Pi is the only agent that edits files.
-
-The feature is off by default. Enable it in **Settings → "Multi-Agent Council Planning"**; a confirmation dialog warns that it increases token and credit usage, since each request runs multiple agents.
-
-The app auto-detects each member's CLI cross-platform, and only detected agents can be enabled (per-agent checkboxes). At least two members must be available or a run is refused. Pi always merges the plans into the final consensus, even when it isn't checked as a planner.
-
-Every member plans read-only: Claude runs with `--permission-mode plan`, Codex with `--sandbox read-only`, and Pi with write tools excluded. They produce plans but never modify files. Only Pi implements the approved result.
-
-During the consulting phase, each member streams its plan live in its own card with an elapsed timer.
-
-There are two consensus modes:
-
-- **One debate round** (default): each member sees the others' plans and revises once, then Pi merges. You watch them converge.
-- **Arbiter merge**: faster and cheaper. Pi synthesizes the initial plans directly with no debate round.
-
-A per-member timeout (10 to 600 seconds, default 240) bounds each member. A member that times out or errors is dropped, and the run proceeds as long as at least one plan was produced.
-
-To use it, type your request with the feature enabled and click **Plan with Council** in the composer. Review each member's plan and Pi's merged consensus plan. If you want changes, type feedback in **Request changes to the plan…** and Pi revises the consensus; repeat as needed. When you're happy, click **Implement this** and Pi builds it. The panel collapses once a plan is ready so the output stays readable.
-
-## TypeSafe Jev
-
-[Jev](https://docs.typesafe.ai/introduction) is TypeSafe's judgment model. It does not write text: it answers typed questions with yes/no probabilities, scores, and choices that code can use directly.
-
-Nothing happens until you set it up in **Settings → TypeSafe Jev**:
-
-- **API key**: paste a key from the [TypeSafe console](https://console.typesafe.ai/keys). It is saved in its own file in the app's data folder that only your user account can read, never in `settings.json`. Every new Pi or OMP session gets it as `TYPESAFE_API_KEY`; a value already set in the environment Pi Desktop started with wins. Restart an open session to give it the key.
-- **Jev skill**: installs TypeSafe's official [agent skill](https://docs.typesafe.ai/agent-skill) into `~/.agents/skills`, where both Pi and OMP find it. The files come from a pinned release and are checked before they are installed.
-
-Then ask the agent to use TypeSafe. Pi Desktop never calls TypeSafe itself.
-
-To learn more, see the TypeSafe [quickstart](https://docs.typesafe.ai/introduction/quickstart), [models and pricing](https://docs.typesafe.ai/models), and [API reference](https://docs.typesafe.ai/api).
-
-## Voice dictation
-
-Click the microphone in the composer and start talking. Your words show up in the prompt box while you speak, and recording stops on its own after a short pause (or click the mic to stop). The text lands in the box for you to read and edit; it is never sent for you.
-
-Speech-to-text runs on your own computer. No model ships with the app and there is no default, so nothing downloads until you choose one in **Settings → Voice dictation**. Pick a model there and it downloads once, with a progress bar, into the app's data folder.
-
-Which model to pick depends on your machine and language. Moonshine is small and fast and handles English well, so it is a good default. Whisper covers many languages. Parakeet V3 is the most accurate and also covers many languages, but it is a much larger download. Bigger models read more accurately but run slower and take more disk. They use your graphics card when there is one and fall back to the processor otherwise.
-
-## Getting started
-
-### Quick install (no compilation)
-
-**macOS / Linux:**
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/clasen/pi-desktop/master/install.sh | bash
-```
-
-**Windows (PowerShell, not Command Prompt):**
-
-```powershell
-iex (irm https://raw.githubusercontent.com/clasen/pi-desktop/master/install.ps1)
-```
-
-If that fails with *"The underlying connection was closed"* (older Windows PowerShell without TLS 1.2 enabled), use `curl.exe` instead:
-
-```powershell
-curl.exe -fsSL https://raw.githubusercontent.com/clasen/pi-desktop/master/install.ps1 | Out-String | Invoke-Expression
-```
-
-These commands execute a downloaded script. You can download and inspect it before running it instead. Close Pi Desktop before updating.
-
-The installer downloads a published build **from this fork**, including alpha releases, and verifies its SHA-256 checksum before installing. No Node.js, Python, or C++ compiler is required for the desktop app. If neither Pi nor OMP is on PATH, it asks before downloading and running Pi's official installer; declining leaves the desktop app installed so you can configure an existing engine later. Noninteractive Bash installs skip this optional step. The scripts do not disable Gatekeeper, SmartScreen, or PowerShell execution policies.
-
-- **Linux x86_64:** installs under `~/.local/share/pi-desktop` with a launcher at `~/.local/bin/pi-desktop`. The launcher uses AppImage extract-and-run mode, so FUSE is not required (it needs writable, executable temporary storage). Standard desktop system libraries are still required; this does not provision a headless/minimal Linux system.
-- **macOS Intel / Apple Silicon:** installs to `~/Applications/Pi Desktop.app` without administrator access. A failed app replacement restores the previous version.
-- **Windows x64:** opens the normal setup wizard and reports cancellation or failure. Additional architectures are rejected before installation.
-
-The scripts need a Release containing installers **and their `.sha256` files**; they do not compile the source if a release is missing. To publish your current fork, update `package.json` and `package-lock.json` to a new version, then push the matching `v<version>` tag. `.github/workflows/build.yml` builds all supported platforms and publishes an alpha prerelease. A manual **Actions → Build → Run workflow** run produces downloadable artifacts; enable **Publish installers as a GitHub prerelease** to also publish the version in `package.json`. Bump the version first: publishing refuses to reuse a tag pointing at another commit. SHA-256 detects corrupt downloads; it is not a code signature, and alpha builds remain unsigned.
-
-### Manual install
-
-Install [Pi](https://pi.dev) or [OMP](https://github.com/can1357/oh-my-pi) separately if needed, then select it in Settings → Agent Configuration.
-
-On Linux, grab the AppImage from [Releases](https://github.com/clasen/pi-desktop/releases):
-
-```bash
-chmod +x Pi-Desktop-*.AppImage
-./Pi-Desktop-*.AppImage
-```
-
-### macOS
-
-Download the `.dmg` for your architecture (Apple Silicon / arm64 or Intel / x64) from [Releases](https://github.com/clasen/pi-desktop/releases), open it, and drag **Pi Desktop** to Applications.
-
-Builds are **not yet signed or notarized**. Because the download is unsigned, macOS quarantines it, and on first launch Gatekeeper shows this dialog (this is macOS's message, not our advice):
-
-> Pi Desktop is damaged and can't be opened. You should move it to the Trash.
-
-**Do not move it to the Trash.** The app is not damaged; this is just how Gatekeeper phrases its block on any unsigned app. macOS offers no "Open Anyway" button for this particular dialog, so clear the quarantine flag in Terminal instead:
-
-```bash
-xattr -dr com.apple.quarantine "/Applications/Pi Desktop.app"
-```
-
-Then open the app normally. You only need to do this once.
-
-> If macOS instead says the app **"cannot be opened because Apple cannot check it for malicious software,"** you can allow it without Terminal: open **System Settings → Privacy & Security**, scroll to the **Security** section, and click **Open Anyway** next to the Pi Desktop notice, then confirm with Touch ID / your password.
-
-> If you'd rather skip the unsigned-app warnings entirely, build from source. A build you compile yourself runs locally without Gatekeeper blocking it, so there is no signing prompt and no quarantine flag to clear. See [Build it yourself → Linux / macOS](#linux--macos) below.
-
-### Windows
-
-Download from [Releases](https://github.com/clasen/pi-desktop/releases): the **installer** (`…-win-x64-setup.exe`, recommended) or the **portable** `…-win-x64.exe`. Builds are unsigned, so SmartScreen may warn; choose **More info → Run anyway**. If file edits or saves fail, see the [Controlled Folder Access](#controlled-folder-access-ransomware-protection) note below. Windows is community-tested; please [open a bug report](https://github.com/clasen/pi-desktop/issues) if you hit an issue.
-
-## Keyboard shortcuts
-
-| Shortcut | What it does |
-|----------|-------------|
-| `Enter` | Send message |
-| `Shift+Enter` | New line |
-| `Up/Down` | Recall previous prompts |
-| `@` | Mention a workspace file |
-| `Escape` | Stop streaming |
-| `Ctrl/Cmd+K` | Open command palette |
-| `/` (start of message) | Open command palette |
-| `Ctrl+P` (composer focused) | Cycle model |
-| `Ctrl/Cmd+F` | Find in conversation |
-| `Ctrl/Cmd+Shift+F` | File search |
-| `Ctrl+Shift+P` | Insert saved note |
-| `Ctrl/Cmd+N` | New session |
-| `Ctrl/Cmd+Shift+N` | New workspace |
-| `Ctrl/Cmd+O` | Open project |
-
-## Build it yourself
-
-### Linux / macOS
-
-```bash
-git clone https://github.com/clasen/pi-desktop.git
-cd pi-desktop
-npm install --ignore-scripts=false
-npm run dev
-```
-
-`--ignore-scripts=false` enables the install scripts needed to prepare Electron and native modules, even if your npm configuration disables scripts by default.
-
-### Windows
-
-Windows requires extra steps because **node-pty** (the terminal backend) compiles a native module against Electron's ABI.
-
-#### 1. Install prerequisites
-
-Install all of the following **before** cloning:
-
-- [Git for Windows](https://git-scm.com/download/win)
-- [Node.js LTS](https://nodejs.org), via the official Windows installer (adds `node` and `npm` to PATH)
-- **Visual Studio Build Tools 2022**, downloaded from [Visual Studio downloads](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022)
-  - Select the **Desktop development with C++** workload
-  - Open **Individual components**, search `Spectre`, and install **Spectre-mitigated libs for v143 toolset**
-
-> **Use VS Build Tools 2022, not 2026.** node-pty requires Spectre-mitigated runtime libraries. VS 2022 stable (v143 toolset) ships them; VS 2026 preview (v180 toolset) does not, and `npm install` will fail with `MSB8040: Spectre-mitigated libraries are required for this project`.
-
-#### 2. Add a Windows Defender exclusion (recommended)
-
-Defender can block or slow `npm install` on projects with many small files. Before cloning, add an exclusion:
-
-Settings → Privacy & Security → Windows Security → Virus & threat protection → Manage settings → Exclusions → Add a folder → (pick where you'll clone the repo)
-
-#### 3. Clone and install
-
-```powershell
-git clone https://github.com/clasen/pi-desktop.git
-cd pi-desktop
-npm install --ignore-scripts=false
-```
-
-`--ignore-scripts=false` enables install scripts even if your npm configuration disables them by default. The postinstall script rebuilds `node-pty` against Electron's ABI and downloads the Electron binary if needed. First install may take a few minutes.
-
-If the Electron binary is missing after install, use the [manual Electron binary download](#manual-electron-binary-download) steps below. This is the confirmed fallback on Windows when Electron's postinstall extraction leaves a partial `dist` folder.
-
-#### 4. Install Pi
-
-```powershell
-powershell -c "irm https://pi.dev/install.ps1 | iex"
-```
-
-Open a **new terminal** after this so the updated PATH takes effect.
-
-#### 5. Run
-
-```powershell
-npm run dev
-```
-
-#### Common Windows errors
-
-| Error | Cause | Fix |
-|-------|-------|-----|
-| `MSB8040`: Spectre libs missing | VS Build Tools 2026 (v180 toolset) installed instead of 2022 (v143) | Uninstall 2026, install VS Build Tools 2022 with Spectre libs for v143 |
-| `electron-vite is not recognized` | `npm install` didn't complete | Run `npm install` again |
-| Electron binary missing after install | Electron's postinstall extraction left a partial or missing `dist` folder | Add the repo folder to Defender exclusions, then `npm install` again. If it still fails, use the manual download steps below |
-| `EPERM` / `EACCES` writing a project file | Controlled Folder Access (Ransomware protection) is blocking writes under Documents/Desktop | Keep the repo and your projects out of protected folders, or allow Pi Desktop through Controlled folder access (see below) |
-| Pi shows "error" in status popover | Pi not installed or PATH not updated | Run the install script above in a **new** terminal window |
-
-#### Controlled Folder Access (Ransomware protection)
-
-Windows **Controlled Folder Access** protects `Documents`, `Desktop`, `Pictures`, and similar folders by silently blocking apps it doesn't trust from writing to them. Because Pi Desktop is a coding agent that edits files, this shows up as intermittent `EPERM`/`EACCES` failures (during `npm install`, when the agent edits code, or when you save a file) if your repo or projects live inside a protected folder.
-
-The reliable fix is to keep code out of protected folders. Clone the repo and put your projects somewhere unprotected, for example:
-
-```powershell
-# Not C:\Users\<you>\Documents\... — use an unprotected path:
-git clone https://github.com/clasen/pi-desktop.git C:\dev\pi-desktop
-```
-
-If you must keep code under Documents/Desktop, allow the app instead:
-
-**Windows Security → Virus & threat protection → Ransomware protection → Manage ransomware protection → Allow an app through Controlled folder access → Add an allowed app**, then add the installed `Pi Desktop.exe` (and, for development, `node.exe`, `git.exe`, and `electron.exe`).
-
-> The portable `.exe` re-extracts to a temporary folder on each launch, so allow-listing it doesn't stick. Prefer the **installer** (`Pi-Desktop-<version>-win-x64-setup.exe`) if you rely on the allow-list approach.
-
-#### Manual Electron binary download
-
-If `npm install` completes but the app won't launch because Electron is missing or corrupted, download it directly from GitHub and unpack it into place. This is the known-good fallback when `node_modules\electron\dist` contains only partial contents, such as `locales`, and no `electron.exe`.
-
-Replace `43.0.0` with the version in `node_modules/electron/package.json` if it differs.
+If `node_modules\electron\dist` ends up with no `electron.exe`, fetch it directly (use the version from `node_modules/electron/package.json`):
 
 ```powershell
 $ver = "43.0.0"
@@ -360,17 +168,12 @@ Expand-Archive -Path $zip -DestinationPath node_modules\electron\dist -Force
 "v$ver" | Out-File -Encoding ASCII -NoNewline node_modules\electron\dist\version
 ```
 
-After this, `npm run dev` should work normally.
+Windows is community-tested. If you hit something not listed here, [open an issue](https://github.com/clasen/pi-desktop/issues).
 
-> **Note:** Windows builds are community-tested. If you hit an issue not listed above, please [open a bug report](https://github.com/clasen/pi-desktop/issues).
-
-## License
-
-Apache 2.0
+</details>
 
 ## Links
 
-- [pi-desktop.com](https://pi-desktop.com)
-- [pi.dev](https://pi.dev)
-- [Packages](https://pi.dev/packages)
-- [Issues](https://github.com/clasen/pi-desktop/issues)
+[pi-desktop.com](https://pi-desktop.com) · [pi.dev](https://pi.dev) · [Packages](https://pi.dev/packages) · [Issues](https://github.com/clasen/pi-desktop/issues)
+
+Apache 2.0
