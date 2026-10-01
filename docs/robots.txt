@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://pi-desktop.com/sitemap.xml
