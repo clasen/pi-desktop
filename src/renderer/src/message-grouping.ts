@@ -5,24 +5,44 @@ import type { DisplayMessage } from './store'
 // still finds and keeps these keys.
 import { t as sharedT, type Translate } from '../../shared/i18n'
 
-// A single chat item to render: either a lone message or a collapsed group of
-// consecutive tool-activity messages.
+export type ToolCall = NonNullable<DisplayMessage['toolCalls']>[number]
+
+/** A tool result paired to the step that produced it. */
+export interface ToolOutput {
+  content: string
+  isError?: boolean
+  toolFile?: string
+}
+
+/** One row in an agent turn's activity timeline. */
+export type TurnStep =
+  | { kind: 'thinking'; id: string; text: string }
+  | { kind: 'narration'; id: string; message: DisplayMessage }
+  | { kind: 'tool'; id: string; call: ToolCall; output?: ToolOutput }
+
+/**
+ * Everything the agent did between two user (or system) messages: one shared
+ * header, an activity timeline, and the closing answer. While live, every prose
+ * message stays in the timeline as narration; once finished, the trailing prose
+ * is promoted to `answer` so it can sit below a collapsed activity summary.
+ */
+export interface AgentTurn {
+  id: string
+  steps: TurnStep[]
+  answer: DisplayMessage[]
+  /** "Ran 3 commands, read a file"; empty when the turn used no tools. */
+  summary: string
+  failedSteps: number
+  model?: string
+  provider?: string
+  cost?: number
+  timestamp?: number
+  live: boolean
+}
+
 export type ChatRenderItem =
   | { kind: 'message'; message: DisplayMessage }
-  | { kind: 'toolGroup'; id: string; title: string; messages: DisplayMessage[] }
-
-// Group a run only once it holds this many tool calls; a lone call renders as-is.
-const MIN_GROUP_TOOL_CALLS = 2
-
-// "Tool activity" is anything with no user-facing prose: tool results, and
-// assistant turns whose only body is tool calls and/or thinking (no text). A run
-// of these between two prose turns is what gets folded into one group; the
-// thinking turns ride along and render in the expanded body per the setting.
-function isToolActivity(m: DisplayMessage): boolean {
-  if (m.role === 'toolResult') return true
-  if (m.role === 'assistant') return m.content.trim().length === 0
-  return false
-}
+  | { kind: 'turn'; turn: AgentTurn }
 
 /** What a tool call does, independent of the display language. */
 export type ToolKind = 'fetch' | 'read' | 'run' | 'edit' | 'write' | 'search' | 'list'
@@ -30,7 +50,7 @@ type TargetToolKind = Exclude<ToolKind, 'run'>
 // Unknown tools bucket together in group titles.
 type SummaryKind = ToolKind | 'other'
 
-// Keyword matching is shared by toolLabel() and toolCallIconFor() so the label
+// Keyword matching is shared by toolCallLabel() and toolCallIconFor() so the label
 // and icon stay in sync.
 export function toolKind(name: string): ToolKind | null {
   const n = name.toLowerCase()
@@ -44,18 +64,10 @@ export function toolKind(name: string): ToolKind | null {
   return null
 }
 
-// Friendly label for a tool; custom/unknown tools keep their raw name. Accepts
-// the caller's own `t` (from `useTranslation()`) so a memoized result recomputes
-// on a language change; defaults to the shared translator for non-component use.
-export function toolLabel(name: string, t: Translate = sharedT): string {
-  const kind = toolKind(name)
-  return kind ? t(`tools.${kind}.label`) : name
-}
-
 const PATH_ARG_KEYS = ['path', 'file', 'filename', 'file_path', 'filepath']
 
 // Argument fields a single-op label pulls its shown value from. Commands
-// ('run') show no value.
+// ('run') read RUN_ARG_KEYS and show the command itself instead of a verb.
 const TOOL_ARG_KEYS: Record<TargetToolKind, readonly string[]> = {
   fetch: ['url', 'uri', 'href', 'link'],
   read: PATH_ARG_KEYS,
@@ -86,8 +98,10 @@ function shorten(s: string): string {
   return s.length > MAX_ARG_LEN ? s.slice(0, MAX_ARG_LEN - 1) + '…' : s
 }
 
+const RUN_ARG_KEYS = ['command', 'cmd', 'script']
+
 // Pull the value a single-op label should show from the tool call's arguments.
-function extractArg(kind: TargetToolKind, argumentsJson: string): string | null {
+function extractArg(kind: ToolKind, argumentsJson: string): string | null {
   let parsed: unknown
   try {
     parsed = JSON.parse(argumentsJson)
@@ -96,7 +110,7 @@ function extractArg(kind: TargetToolKind, argumentsJson: string): string | null 
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
   const obj = parsed as Record<string, unknown>
-  for (const key of TOOL_ARG_KEYS[kind]) {
+  for (const key of hasTarget(kind) ? TOOL_ARG_KEYS[kind] : RUN_ARG_KEYS) {
     const val = obj[key]
     if (typeof val === 'string' && val.trim()) return val.trim()
   }
@@ -128,39 +142,38 @@ function toolTarget(kind: ToolKind | null, argumentsJson: string): string | null
 }
 
 /**
- * Label for a single tool-call badge: past-tense verb plus the operated-on value,
- * e.g. "Fetched https://…", "Read config.ts", "Ran a command". Falls back to a
- * value-less "<Verb> a <noun>" when the argument can't be read, and to the raw
- * name for unknown tools.
+ * Label for a single tool-call row: past-tense verb plus the operated-on value,
+ * e.g. "Fetched https://…", "Read config.ts". A command shows itself (first
+ * line only; the row truncates it). Falls back to a value-less "<Verb> a <noun>"
+ * when the argument can't be read, and to the raw name for unknown tools.
  */
 export function toolCallLabel(name: string, argumentsJson: string, t: Translate = sharedT): string {
   const kind = toolKind(name)
-  if (!kind) return name
-  const arg = hasTarget(kind) ? extractArg(kind, argumentsJson) : null
-  if (arg === null || !hasTarget(kind)) return t(`tools.${kind}.doneWithoutTarget`)
+  if (!kind) return name || t('tools.other.summaryFirst', { count: 1 })
+  const arg = extractArg(kind, argumentsJson)
+  if (arg === null) return t(`tools.${kind}.doneWithoutTarget`)
+  if (!hasTarget(kind)) return arg.split('\n')[0]
   return t(TOOL_DONE_KEYS[kind], { target: displayArg(kind, arg) })
 }
 
-// Combine the per-tool verbs across a run into one title, e.g.
+// Combine the per-tool verbs across a turn into one title, e.g.
 // "Fetched 4 URLs, read 2 files, edited a file". Counts are bucketed by kind in
 // first-appearance order and count *distinct* targets, so re-reading one file
 // or re-fetching one URL reads "Read a file" / "Fetched a URL", not "2".
 // Target-less calls (commands, unresolved args) each count on their own.
 // Unknown tools bucket together under 'other'.
-function groupTitle(run: DisplayMessage[], t: Translate): string {
+function turnSummary(calls: ToolCall[], t: Translate): string {
   const order: SummaryKind[] = []
   const targets = new Map<SummaryKind, Set<string>>()
   let uniqueSeq = 0 // gives each target-less call its own bucket entry
-  for (const m of run) {
-    for (const tc of m.toolCalls ?? []) {
-      const kind = toolKind(tc.name)
-      const bucket: SummaryKind = kind ?? 'other'
-      if (!targets.has(bucket)) {
-        order.push(bucket)
-        targets.set(bucket, new Set())
-      }
-      targets.get(bucket)!.add(toolTarget(kind, tc.arguments) ?? `\0${uniqueSeq++}`)
+  for (const tc of calls) {
+    const kind = toolKind(tc.name)
+    const bucket: SummaryKind = kind ?? 'other'
+    if (!targets.has(bucket)) {
+      order.push(bucket)
+      targets.set(bucket, new Set())
     }
+    targets.get(bucket)!.add(toolTarget(kind, tc.arguments) ?? `\0${uniqueSeq++}`)
   }
 
   return order
@@ -173,63 +186,107 @@ function groupTitle(run: DisplayMessage[], t: Translate): string {
     .join(t('tools.summarySeparator'))
 }
 
+function buildTurn(id: string, messages: DisplayMessage[], live: boolean, t: Translate): AgentTurn {
+  const steps: TurnStep[] = []
+  const toolSteps = new Map<string, Extract<TurnStep, { kind: 'tool' }>>()
+  let model: string | undefined
+  let provider: string | undefined
+  let cost: number | undefined
+
+  for (const m of messages) {
+    if (m.role === 'assistant') {
+      if (m.model && model === undefined) {
+        model = m.model
+        provider = m.provider
+      }
+      if (m.cost !== undefined) cost = (cost ?? 0) + m.cost
+      if (m.thinking?.trim()) steps.push({ kind: 'thinking', id: `${m.id}:thinking`, text: m.thinking })
+      if (m.content.trim()) steps.push({ kind: 'narration', id: m.id, message: m })
+      for (const call of m.toolCalls ?? []) {
+        // Edit/write results are folded onto the call; marker calls carry their own.
+        const step: Extract<TurnStep, { kind: 'tool' }> = {
+          kind: 'tool',
+          id: call.id,
+          call,
+          output: call.result !== undefined ? { content: call.result, isError: call.isError } : undefined,
+        }
+        toolSteps.set(call.id, step)
+        steps.push(step)
+      }
+    } else if (m.role === 'toolResult') {
+      const output: ToolOutput = { content: m.content, isError: m.isError, toolFile: m.toolFile }
+      const step = m.toolCallId ? toolSteps.get(m.toolCallId) : undefined
+      if (step) step.output = output
+      else steps.push({ kind: 'tool', id: m.id, call: { id: m.id, name: m.toolName ?? '', arguments: '{}' }, output })
+    }
+  }
+
+  // A finished turn's trailing prose is its answer; reasoning stays in the activity.
+  const answer: DisplayMessage[] = []
+  if (!live) {
+    let lastTool = -1
+    steps.forEach((step, index) => {
+      if (step.kind === 'tool') lastTool = index
+    })
+    for (let i = steps.length - 1; i > lastTool; i--) {
+      const step = steps[i]
+      if (step.kind !== 'narration') continue
+      answer.unshift(step.message)
+      steps.splice(i, 1)
+    }
+  }
+
+  const tools = steps.filter((step): step is Extract<TurnStep, { kind: 'tool' }> => step.kind === 'tool')
+  return {
+    id,
+    steps,
+    answer,
+    summary: tools.length > 0 ? turnSummary(tools.map((step) => step.call), t) : '',
+    failedSteps: tools.filter((step) => step.call.isError ?? step.output?.isError).length,
+    model,
+    provider,
+    cost,
+    timestamp: messages.at(-1)?.timestamp,
+    live,
+  }
+}
+
 /**
- * Fold consecutive tool-activity messages into collapsible groups. A run that
- * carries fewer than MIN_GROUP_TOOL_CALLS tool calls is emitted as individual
- * messages (unchanged rendering); larger runs become a single `toolGroup` item.
- * Prose turns (assistant text, user, system) always render on their own and act
- * as run boundaries.
+ * Fold everything the agent did between two user/system messages into one
+ * `turn` item. User and system messages render on their own. While streaming,
+ * the turn after the last user message is live (it exists even before the agent
+ * commits anything, so the streaming tail has a home). A turn's id derives from
+ * the message before it so it stays stable as the live turn grows.
  */
-export function groupToolMessages(messages: DisplayMessage[], t: Translate = sharedT, isStreaming = false): ChatRenderItem[] {
+export function groupAgentTurns(messages: DisplayMessage[], t: Translate = sharedT, isStreaming = false): ChatRenderItem[] {
   const items: ChatRenderItem[] = []
   let run: DisplayMessage[] = []
-  const liveFrom = isStreaming
-    ? messages.reduce((last, message, index) => message.role === 'user' ? index : last, -1)
-    : messages.length
-  let runStart = 0
+  let boundaryId: string | null = null
 
-  const flush = (): void => {
-    if (run.length === 0) return
-    const toolCallCount = run.reduce((n, m) => n + (m.toolCalls?.length ?? 0), 0)
-    if (toolCallCount >= MIN_GROUP_TOOL_CALLS && runStart < liveFrom) {
-      items.push({
-        kind: 'toolGroup',
-        id: `group-${run[0].id}`,
-        title: groupTitle(run, t),
-        messages: run,
-      })
-    } else {
-      for (const m of run) items.push({ kind: 'message', message: m })
-    }
+  const flush = (live: boolean): void => {
+    if (run.length === 0 && !live) return
+    const id = `turn-${boundaryId ?? run[0]?.id ?? 'live'}`
+    items.push({ kind: 'turn', turn: buildTurn(id, run, live, t) })
     run = []
   }
 
-  for (const [index, m] of messages.entries()) {
-    if (isToolActivity(m)) {
-      if (run.length === 0) runStart = index
+  for (const m of messages) {
+    if (m.role === 'assistant' || m.role === 'toolResult') {
       run.push(m)
     } else {
-      flush()
+      flush(false)
       items.push({ kind: 'message', message: m })
+      boundaryId = m.id
     }
   }
-  flush()
+  flush(isStreaming)
 
   return items
 }
 
-/** A tool call's run state, as shown next to its badge (e.g. message-bubble.tsx, streaming-bubble.tsx). */
-export type ToolCallStatus = 'running' | 'error' | 'done'
-
-const TOOL_CALL_STATUS_KEYS = {
-  running: 'chat.toolCall.status.running',
-  error: 'chat.toolCall.status.error',
-  done: 'chat.toolCall.status.done',
-} as const satisfies Record<ToolCallStatus, string>
-
-/** Label for a tool call's run state. Accepts the caller's own `t` so it re-renders on a language change. */
-export function toolCallStatusLabel(status: ToolCallStatus | null, t: Translate = sharedT): string {
-  return status ? t(TOOL_CALL_STATUS_KEYS[status]) : ''
+/** The full command a shell-style tool call runs, or null. */
+export function toolCallCommand(argumentsJson: string): string | null {
+  return extractArg('run', argumentsJson)
 }
 
 /** The file/location a read/write/edit/list tool call operates on, or null. */
