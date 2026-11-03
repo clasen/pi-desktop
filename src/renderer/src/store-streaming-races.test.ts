@@ -163,10 +163,9 @@ test('another session working in the same workspace never starts this chat spinn
   assert.equal(useAppStore.getState().reattachedMidTurn, false)
 })
 
-test('an idle history backfill preserves message keys and expanded streamed reasoning', async () => {
+test('an idle history backfill preserves message keys', async () => {
   useAppStore.setState({ messages: [{
     id: 'existing', role: 'assistant', content: 'answer', thinking: 'reasoning', timestamp: 1,
-    initiallyShowThinking: true,
   }] })
   const load = useAppStore.getState().reloadActiveSession({ refreshList: false })
   historyRequests[0].resolve({ success: true, data: { messages: [{
@@ -174,7 +173,6 @@ test('an idle history backfill preserves message keys and expanded streamed reas
   }] } })
   await load
   assert.equal(useAppStore.getState().messages[0]?.id, 'existing')
-  assert.equal(useAppStore.getState().messages[0]?.initiallyShowThinking, true)
 })
 
 test('a queued backfill cannot clear a new run that has already started', async () => {
@@ -207,13 +205,13 @@ test('attaching after a tool started still displays its next progress update', (
   assert.equal(state.streamingToolCalls.get('ongoing')?.isExecuting, true)
 })
 
-test('reasoning stays expanded when its final message and agent_end arrive together', () => {
+test('reasoning is committed when its final message and agent_end arrive together', () => {
   useAppStore.setState({ isStreaming: true, streamingThinking: 'visible reasoning' })
   useAppStore.getState().handlePiEvent({
     type: 'message_end', message: { role: 'assistant', content: [{ type: 'thinking', thinking: 'visible reasoning' }] },
   })
   useAppStore.getState().handlePiEvent({ type: 'agent_end', messages: [] })
-  assert.equal(useAppStore.getState().messages[0]?.initiallyShowThinking, true)
+  assert.equal(useAppStore.getState().messages[0]?.thinking, 'visible reasoning')
 })
 
 test('a final response without deltas is displayed exactly once', () => {

@@ -24,8 +24,6 @@ export interface DisplayMessage {
     durationMs?: number
   }>
   thinking?: string
-  /** Keep reasoning that was visible during streaming open on its first render. */
-  initiallyShowThinking?: boolean
   model?: string
   provider?: string
   cost?: number

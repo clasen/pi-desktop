@@ -234,7 +234,7 @@ export function WorkspaceTabs({ projectBar }: { projectBar: HTMLDivElement }): R
       </button>
     </div>, projectBar)}
     {sessionTabs.length > 0 && (
-      <div data-close-target="session" className="flex h-8 shrink-0 items-center gap-1 overflow-x-auto border-b border-border/70 px-3">
+      <div data-close-target="session" className="flex h-8 shrink-0 items-stretch overflow-x-auto border-b border-border/70">
         {sessionTabs.map((runtime) => {
           const session = sessionList.find((item) => runtime.sessionPath && pathsEqual(item.path, runtime.sessionPath))
           const active = runtime.runtimeId === activeSessionRuntimeId || runtime.active
@@ -247,7 +247,7 @@ export function WorkspaceTabs({ projectBar }: { projectBar: HTMLDivElement }): R
                 void closeSessionTab(runtime.runtimeId)
               }}
               className={clsx(
-                'group flex h-6 min-w-0 max-w-[240px] shrink-0 items-center gap-0.5 rounded px-2 text-[11px] transition-colors',
+                'group flex min-w-0 max-w-[240px] shrink-0 items-center gap-0.5 border-r border-border/70 px-3 text-[11px] transition-colors',
                 active ? 'bg-card text-primary' : 'text-muted hover:bg-highlight hover:text-secondary'
               )}
             >

@@ -125,10 +125,12 @@
     },
     "toolCall": {
       "status": {
-        "done": "已完成",
         "error": "错误",
         "running": "运行中"
       }
+    },
+    "turn": {
+      "failedSteps_other": "{{count}} 个失败"
     },
     "voice": {
       "errorTitle": "语音听写失败：{{error}}",
@@ -1619,21 +1621,18 @@
     "edit": {
       "done": "已编辑 {{target}}",
       "doneWithoutTarget": "已编辑一个文件",
-      "label": "编辑文件",
       "summaryFirst_other": "编辑了 {{count}} 个文件",
       "summaryNext_other": "编辑了 {{count}} 个文件"
     },
     "fetch": {
       "done": "已获取 {{target}}",
       "doneWithoutTarget": "已获取一个 URL",
-      "label": "获取 URL",
       "summaryFirst_other": "获取了 {{count}} 个 URL",
       "summaryNext_other": "获取了 {{count}} 个 URL"
     },
     "list": {
       "done": "已列出 {{target}}",
       "doneWithoutTarget": "列出了一个位置",
-      "label": "列出文件",
       "summaryFirst_other": "列出了 {{count}} 个位置",
       "summaryNext_other": "列出了 {{count}} 个位置"
     },
@@ -1644,20 +1643,17 @@
     "read": {
       "done": "已读取 {{target}}",
       "doneWithoutTarget": "读取了一个文件",
-      "label": "读取文件",
       "summaryFirst_other": "读取了 {{count}} 个文件",
       "summaryNext_other": "读取了 {{count}} 个文件"
     },
     "run": {
       "doneWithoutTarget": "运行了一个命令",
-      "label": "运行命令",
       "summaryFirst_other": "运行了 {{count}} 个命令",
       "summaryNext_other": "运行了 {{count}} 个命令"
     },
     "search": {
       "done": "已搜索 {{target}}",
       "doneWithoutTarget": "执行了一次搜索",
-      "label": "搜索",
       "summaryFirst_other": "执行了 {{count}} 次搜索",
       "summaryNext_other": "执行了 {{count}} 次搜索"
     },
@@ -1665,7 +1661,6 @@
     "write": {
       "done": "已创建 {{target}}",
       "doneWithoutTarget": "创建了一个文件",
-      "label": "写入文件",
       "summaryFirst_other": "创建了 {{count}} 个文件",
       "summaryNext_other": "创建了 {{count}} 个文件"
     }

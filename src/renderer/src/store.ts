@@ -1706,7 +1706,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
           }
           const messages = loaded.map((entry) => {
             const existing = previous.get(key(entry))?.shift()
-            return existing ? { ...entry, id: existing.id, initiallyShowThinking: existing.initiallyShowThinking } : entry
+            return existing ? { ...entry, id: existing.id } : entry
           })
           set({ messages, sessionLoading: false })
         } else {
@@ -3545,7 +3545,6 @@ function handleTurnComplete(
         content: text.content,
         timestamp: final?.timestamp ?? Date.now(),
         thinking: thinking || undefined,
-        initiallyShowThinking: Boolean(state.streamingThinking),
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
         model,
         provider,

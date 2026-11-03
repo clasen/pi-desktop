@@ -127,10 +127,13 @@
     },
     "toolCall": {
       "status": {
-        "done": "done",
         "error": "error",
         "running": "running"
       }
+    },
+    "turn": {
+      "failedSteps_one": "{{count}} failed",
+      "failedSteps_other": "{{count}} failed"
     },
     "voice": {
       "errorTitle": "Voice dictation failed: {{error}}",
@@ -1648,7 +1651,6 @@
     "edit": {
       "done": "Edited {{target}}",
       "doneWithoutTarget": "Edited a file",
-      "label": "Edit file",
       "summaryFirst_one": "Edited a file",
       "summaryFirst_other": "Edited {{count}} files",
       "summaryNext_one": "edited a file",
@@ -1657,7 +1659,6 @@
     "fetch": {
       "done": "Fetched {{target}}",
       "doneWithoutTarget": "Fetched a URL",
-      "label": "Fetch URL",
       "summaryFirst_one": "Fetched a URL",
       "summaryFirst_other": "Fetched {{count}} URLs",
       "summaryNext_one": "fetched a URL",
@@ -1666,7 +1667,6 @@
     "list": {
       "done": "Listed {{target}}",
       "doneWithoutTarget": "Listed a location",
-      "label": "List files",
       "summaryFirst_one": "Listed a location",
       "summaryFirst_other": "Listed {{count}} locations",
       "summaryNext_one": "listed a location",
@@ -1681,7 +1681,6 @@
     "read": {
       "done": "Read {{target}}",
       "doneWithoutTarget": "Read a file",
-      "label": "Read file",
       "summaryFirst_one": "Read a file",
       "summaryFirst_other": "Read {{count}} files",
       "summaryNext_one": "read a file",
@@ -1689,7 +1688,6 @@
     },
     "run": {
       "doneWithoutTarget": "Ran a command",
-      "label": "Run command",
       "summaryFirst_one": "Ran a command",
       "summaryFirst_other": "Ran {{count}} commands",
       "summaryNext_one": "ran a command",
@@ -1698,7 +1696,6 @@
     "search": {
       "done": "Searched {{target}}",
       "doneWithoutTarget": "Searched a query",
-      "label": "Search",
       "summaryFirst_one": "Searched a query",
       "summaryFirst_other": "Searched {{count}} queries",
       "summaryNext_one": "searched a query",
@@ -1708,7 +1705,6 @@
     "write": {
       "done": "Created {{target}}",
       "doneWithoutTarget": "Created a file",
-      "label": "Write file",
       "summaryFirst_one": "Created a file",
       "summaryFirst_other": "Created {{count}} files",
       "summaryNext_one": "created a file",

@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
-  groupToolMessages,
+  groupAgentTurns,
   toolKind,
-  toolLabel,
   toolCallLabel,
   toolCallFile,
   parseEdits,
   editStats,
   prepareChatMessages,
   splitReadTruncationNote,
+  type AgentTurn,
   type ChatRenderItem,
 } from './message-grouping'
 import type { DisplayMessage } from './message-parsing'
@@ -20,11 +20,14 @@ let idCounter = 0
 function assistant(over: Partial<DisplayMessage> = {}): DisplayMessage {
   return { id: `a${++idCounter}`, role: 'assistant', content: '', timestamp: 0, ...over }
 }
+// Pi pairs every result to its call; result() answers the latest toolTurn().
+let lastCallId: string | undefined
 function toolTurn(name: string, args: Record<string, unknown> = {}): DisplayMessage {
-  return assistant({ toolCalls: [{ id: `tc${++idCounter}`, name, arguments: JSON.stringify(args) }] })
+  lastCallId = `tc${++idCounter}`
+  return assistant({ toolCalls: [{ id: lastCallId, name, arguments: JSON.stringify(args) }] })
 }
-function result(): DisplayMessage {
-  return { id: `r${++idCounter}`, role: 'toolResult', content: 'output', timestamp: 0 }
+function result(toolCallId = lastCallId): DisplayMessage {
+  return { id: `r${++idCounter}`, role: 'toolResult', content: 'output', timestamp: 0, toolCallId }
 }
 function prose(text = 'hello'): DisplayMessage {
   return assistant({ content: text })
@@ -33,12 +36,15 @@ function user(): DisplayMessage {
   return { id: `u${++idCounter}`, role: 'user', content: 'hi', timestamp: 0 }
 }
 
+function turns(items: ChatRenderItem[]): AgentTurn[] {
+  return items.flatMap((item) => (item.kind === 'turn' ? [item.turn] : []))
+}
 function titles(items: ChatRenderItem[]): string[] {
-  return items.filter((i) => i.kind === 'toolGroup').map((i) => (i as { title: string }).title)
+  return turns(items).map((turn) => turn.summary).filter(Boolean)
 }
 
-test('folds a run of same-tool turns into one titled group', () => {
-  const items = groupToolMessages([
+test('folds everything the agent did after a prompt into one turn with its answer', () => {
+  const items = groupAgentTurns([
     user(),
     toolTurn('web_fetch'),
     result(),
@@ -48,35 +54,58 @@ test('folds a run of same-tool turns into one titled group', () => {
     result(),
     prose('Here are three stories'),
   ])
-  // user, group, prose
-  assert.equal(items.length, 3)
-  assert.equal(items[0].kind, 'message')
-  assert.equal(items[1].kind, 'toolGroup')
-  assert.equal(items[2].kind, 'message')
-  assert.deepEqual(titles(items), ['Fetched 3 URLs'])
-  assert.equal((items[1] as { messages: DisplayMessage[] }).messages.length, 6)
+  assert.deepEqual(items.map((item) => item.kind), ['message', 'turn'])
+  const [turn] = turns(items)
+  assert.equal(turn.summary, 'Fetched 3 URLs')
+  assert.equal(turn.steps.length, 3)
+  assert.ok(turn.steps.every((step) => step.kind === 'tool'))
+  assert.deepEqual(turn.answer.map((m) => m.content), ['Here are three stories'])
+  assert.equal(turn.live, false)
 })
 
-test('a live turn keeps completed tools visible instead of replacing them with a collapsed group', () => {
-  const history = [user(), toolTurn('read'), result(), toolTurn('bash'), result()]
-  const oldGroup = groupToolMessages(history)[1]
-  const live = [user(), toolTurn('read'), result(), toolTurn('write'), result()]
-  const items = groupToolMessages([...history, ...live], t, true)
+test('a live turn keeps its prose in the timeline and exists before anything is committed', () => {
+  const prompt = user()
+  const waiting = groupAgentTurns([prompt], t, true)
+  assert.equal(turns(waiting)[0]?.live, true)
+  assert.deepEqual(turns(waiting)[0]?.steps, [])
 
-  assert.deepEqual(items[1], oldGroup, 'previous turns retain their grouping')
-  assert.ok(items.slice(2).every((item) => item.kind === 'message'))
-  assert.equal(items.at(-1)?.kind, 'message', 'the latest result remains visible')
-  assert.equal(groupToolMessages([...history, ...live], t, false).at(-1)?.kind, 'toolGroup')
+  const working = [prompt, prose('Checking the config'), toolTurn('bash', { command: 'ls' }), result(), prose('Found it')]
+  const live = turns(groupAgentTurns(working, t, true))[0]
+  assert.equal(live.id, turns(waiting)[0].id, 'the live turn keeps its key as it grows')
+  assert.deepEqual(live.answer, [])
+  assert.deepEqual(live.steps.map((step) => step.kind), ['narration', 'tool', 'narration'])
+
+  const done = turns(groupAgentTurns(working, t, false))[0]
+  assert.equal(done.id, live.id, 'finishing keeps the key so the view folds in place')
+  assert.deepEqual(done.steps.map((step) => step.kind), ['narration', 'tool'])
+  assert.deepEqual(done.answer.map((m) => m.content), ['Found it'])
 })
 
-test('a single tool call is not grouped', () => {
-  const items = groupToolMessages([toolTurn('read_file'), result()])
-  assert.equal(items.length, 2)
-  assert.ok(items.every((i) => i.kind === 'message'))
+test('only the latest turn is live while streaming', () => {
+  const items = groupAgentTurns([user(), toolTurn('bash'), result(), prose('a'), user(), toolTurn('read_file')], t, true)
+  assert.deepEqual(turns(items).map((turn) => turn.live), [false, true])
+})
+
+test('tool results attach to their call step instead of rendering separately', () => {
+  const items = groupAgentTurns(prepareChatMessages([
+    callTurn('bash', 'c1', { command: 'wc -l p.txt' }),
+    { ...resultFor('c1', '34 p.txt'), isError: true },
+  ]))
+  const [step] = turns(items)[0].steps
+  assert.equal(step.kind, 'tool')
+  assert.equal(step.kind === 'tool' && step.output?.content, '34 p.txt')
+  assert.equal(turns(items)[0].failedSteps, 1)
+})
+
+test('a turn without tools has no summary and keeps its reasoning as a step', () => {
+  const [turn] = turns(groupAgentTurns([user(), assistant({ thinking: 'hmm', content: 'Hi there' })]))
+  assert.equal(turn.summary, '')
+  assert.deepEqual(turn.steps.map((step) => step.kind), ['thinking'])
+  assert.deepEqual(turn.answer.map((m) => m.content), ['Hi there'])
 })
 
 test('mixed tools combine their verbs (first capitalized, rest lower-cased)', () => {
-  const items = groupToolMessages([
+  const items = groupAgentTurns([
     toolTurn('read_file'),
     result(),
     toolTurn('web_fetch'),
@@ -86,7 +115,7 @@ test('mixed tools combine their verbs (first capitalized, rest lower-cased)', ()
 })
 
 test('mixed run combines counts per tool type in first-appearance order', () => {
-  const items = groupToolMessages([
+  const items = groupAgentTurns([
     toolTurn('web_fetch'),
     result(),
     toolTurn('web_fetch'),
@@ -106,7 +135,7 @@ test('mixed run combines counts per tool type in first-appearance order', () => 
 })
 
 test('unknown tools bucket together under the generic verb', () => {
-  const items = groupToolMessages([
+  const items = groupAgentTurns([
     toolTurn('mystery_tool'),
     result(),
     toolTurn('another_weird_one'),
@@ -115,8 +144,8 @@ test('unknown tools bucket together under the generic verb', () => {
   assert.deepEqual(titles(items), ['Ran 2 tools'])
 })
 
-test('prose turn breaks a run into two groups', () => {
-  const items = groupToolMessages([
+test('narration between steps stays inside the turn', () => {
+  const items = groupAgentTurns([
     toolTurn('bash'),
     result(),
     toolTurn('bash'),
@@ -127,21 +156,21 @@ test('prose turn breaks a run into two groups', () => {
     toolTurn('read_file'),
     result(),
   ])
-  assert.deepEqual(titles(items), ['Ran 2 commands', 'Read 2 files'])
+  assert.deepEqual(titles(items), ['Ran 2 commands, read 2 files'])
+  assert.equal(turns(items)[0].steps.filter((step) => step.kind === 'narration').length, 1)
 })
 
-test('thinking-only turn rides along in the group without breaking it', () => {
+test('thinking-only turns become steps without counting as tools', () => {
   const thinkingOnly = assistant({ thinking: 'let me think', content: '' })
-  const items = groupToolMessages([
+  const items = groupAgentTurns([
     toolTurn('web_fetch'),
     result(),
     thinkingOnly,
     toolTurn('web_fetch'),
     result(),
   ])
-  // One group; the thinking turn is absorbed (count stays at the 2 tool calls).
   assert.deepEqual(titles(items), ['Fetched 2 URLs'])
-  assert.equal((items[0] as { messages: DisplayMessage[] }).messages.length, 5)
+  assert.deepEqual(turns(items)[0].steps.map((step) => step.kind), ['tool', 'thinking', 'tool'])
 })
 
 test('multiple tool calls in a single assistant turn count toward the threshold', () => {
@@ -151,12 +180,12 @@ test('multiple tool calls in a single assistant turn count toward the threshold'
       { id: 'x2', name: 'read_file', arguments: '{}' },
     ],
   })
-  const items = groupToolMessages([twoCalls, result(), result()])
+  const items = groupAgentTurns([twoCalls, result('x1'), result('x2')])
   assert.deepEqual(titles(items), ['Read 2 files'])
 })
 
 test('group title counts distinct targets: same file read twice reads as one', () => {
-  const items = groupToolMessages([
+  const items = groupAgentTurns([
     toolTurn('read_file', { path: 'src/app/foo.ts' }),
     result(),
     toolTurn('read_file', { path: 'src/app/foo.ts' }),
@@ -166,7 +195,7 @@ test('group title counts distinct targets: same file read twice reads as one', (
 })
 
 test('group title counts distinct targets: same URL fetched thrice reads as one', () => {
-  const items = groupToolMessages([
+  const items = groupAgentTurns([
     toolTurn('web_fetch', { url: 'https://cnn.com' }),
     result(),
     toolTurn('web_fetch', { url: 'https://cnn.com' }),
@@ -178,7 +207,7 @@ test('group title counts distinct targets: same URL fetched thrice reads as one'
 })
 
 test('group title counts same-named files in different dirs as distinct', () => {
-  const items = groupToolMessages([
+  const items = groupAgentTurns([
     toolTurn('read_file', { path: 'a/foo.ts' }),
     result(),
     toolTurn('read_file', { path: 'b/foo.ts' }),
@@ -188,7 +217,7 @@ test('group title counts same-named files in different dirs as distinct', () => 
 })
 
 test('group title dedupes paths across separators and case', () => {
-  const items = groupToolMessages([
+  const items = groupAgentTurns([
     toolTurn('read_file', { path: 'C:\\work\\Foo.ts' }),
     result(),
     toolTurn('read_file', { path: 'c:/work/foo.ts' }),
@@ -198,7 +227,7 @@ test('group title dedupes paths across separators and case', () => {
 })
 
 test('group title dedupes per target in a mixed run', () => {
-  const items = groupToolMessages([
+  const items = groupAgentTurns([
     toolTurn('web_fetch', { url: 'https://x.com' }),
     result(),
     toolTurn('web_fetch', { url: 'https://x.com' }),
@@ -212,19 +241,13 @@ test('group title dedupes per target in a mixed run', () => {
 })
 
 test('group title still counts target-less commands individually', () => {
-  const items = groupToolMessages([
+  const items = groupAgentTurns([
     toolTurn('bash', { command: 'ls' }),
     result(),
     toolTurn('bash', { command: 'ls' }),
     result(),
   ])
   assert.deepEqual(titles(items), ['Ran 2 commands'])
-})
-
-test('toolLabel maps known tools and falls back to raw name', () => {
-  assert.equal(toolLabel('web_fetch'), 'Fetch URL')
-  assert.equal(toolLabel('bash'), 'Run command')
-  assert.equal(toolLabel('some_custom_tool'), 'some_custom_tool')
 })
 
 test('toolCallLabel shows the operated-on value (path args as basename)', () => {
@@ -236,8 +259,10 @@ test('toolCallLabel shows the operated-on value (path args as basename)', () => 
   assert.equal(toolCallLabel('list_dir', '{"path":"src/components"}'), 'Listed components')
 })
 
-test('toolCallLabel omits the value for commands and when no arg is present', () => {
-  assert.equal(toolCallLabel('bash', '{"command":"ls -la"}'), 'Ran a command')
+test('toolCallLabel shows a command itself (first line) and omits a missing value', () => {
+  assert.equal(toolCallLabel('bash', '{"command":"ls -la"}'), 'ls -la')
+  assert.equal(toolCallLabel('bash', JSON.stringify({ command: 'cat <<EOF\nbody\nEOF' })), 'cat <<EOF')
+  assert.equal(toolCallLabel('bash', '{}'), 'Ran a command')
   assert.equal(toolCallLabel('read_file', '{}'), 'Read a file')
   assert.equal(toolCallLabel('some_custom_tool', '{}'), 'some_custom_tool')
 })
@@ -353,11 +378,10 @@ test('prepareChatMessages splits a prose+tools turn so its tool call can group',
   assert.equal(toolPart.model, 'ornith')
   assert.equal(toolPart.toolCalls?.[0].id, 'c1')
 
-  // After grouping, the split tool call joins the second fetch into one group.
-  const items = groupToolMessages(out)
-  assert.deepEqual(titles(items), ['Fetched 2 URLs'])
-  assert.equal(items[0].kind, 'message') // the prose renders on its own first
-  assert.equal(items[1].kind, 'toolGroup')
+  // In the turn, the prose narrates before both fetches.
+  const [turn] = turns(groupAgentTurns(out))
+  assert.equal(turn.summary, 'Fetched 2 URLs')
+  assert.deepEqual(turn.steps.map((step) => step.kind), ['thinking', 'narration', 'tool', 'tool'])
 })
 
 test('prepareChatMessages leaves a pure-prose or pure-tool turn as the same object', () => {
@@ -391,7 +415,7 @@ test('toolKind names the operation independent of language', () => {
 test('grouping and file lookups do not change with the interface language', async () => {
   await i18n.changeLanguage(PSEUDO_LANGUAGE)
   try {
-    const items = groupToolMessages([
+    const items = groupAgentTurns([
       toolTurn('bash', { command: 'ls' }),
       result(),
       toolTurn('bash', { command: 'pwd' }),
@@ -399,7 +423,6 @@ test('grouping and file lookups do not change with the interface language', asyn
     ])
     assert.deepEqual(titles(items), [t('tools.run.summaryFirst', { count: 2 })])
     assert.equal(toolCallFile('read_file', '{"path":"src/foo.ts"}'), 'src/foo.ts')
-    assert.equal(toolLabel('some_custom_tool'), 'some_custom_tool')
   } finally {
     await i18n.changeLanguage(SOURCE_LANGUAGE)
   }

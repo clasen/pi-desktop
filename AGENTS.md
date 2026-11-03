@@ -138,7 +138,7 @@ src/
         ├── global.d.ts           # Renderer ambient types
         ├── i18n.ts               # Boot language, language picker options, apply the language setting
         ├── message-parsing.ts    # Pi messages -> display messages
-        ├── message-grouping.ts   # Tool-name labels and message grouping
+        ├── message-grouping.ts   # Agent turns (steps, summary, answer) and tool-call labels
         ├── theme/engine.ts       # Apply a resolved theme to the document
         ├── themes/               # Built-in theme JSON files
         ├── index.css             # Tailwind + theme overrides
@@ -177,8 +177,9 @@ src/
             ├── copy-button.tsx    # Shared copy-to-clipboard button
             ├── image-viewer.tsx   # Read-only image preview pane
             ├── council-panels.tsx # Council planning live cards + gate
-            ├── message-bubble.tsx # Messages with edit/branch/copy
-            ├── streaming-bubble.tsx # Live streaming indicator
+            ├── message-bubble.tsx # User/system messages with edit/branch/copy
+            ├── agent-turn.tsx     # Agent turn: one header, activity timeline, answer
+            ├── streaming-bubble.tsx # Live tail of the active turn's timeline
             ├── markdown-renderer.tsx # Markdown + syntax highlight
             ├── code-editor.tsx    # CodeMirror 6 editor
             ├── code-editor-language.ts   # Language detection
@@ -277,7 +278,7 @@ src/
 - Markdown rendering with syntax highlighting; bundled Inter/JetBrains Mono variable fonts + OpenMoji color emoji so rendering doesn't depend on system fonts
 - Fenced SVG documents render as a sandboxed `data:` image with a source/render toggle (browser "secure static mode" — no scripts, no external loads)
 - Filenames mentioned in chat text become clickable links that open a code/image preview pane
-- Tool-call results are collapsible (first line as header, expand for the rest); edit/write results fold into the call badge with an inline diff instead of a separate pill; per-message model label
+- Each agent turn renders as one block: a single model header, an activity timeline (reasoning, narration, one row per tool call with its result folded in; commands show themselves), and the answer. Success is silent; only running and failed steps are marked. A finished turn that used tools folds its activity into a one-line summary above the answer
 - `#tag` extraction from messages
 
 ### Model & Thinking

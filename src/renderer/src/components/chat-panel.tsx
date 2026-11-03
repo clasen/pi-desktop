@@ -4,8 +4,9 @@ import { PI_DESKTOP_PRODUCT_NAME } from '../../../shared/product-name'
 import { ChatInput } from './chat-input'
 import { ChatProjectPicker } from './chat-project-picker'
 import { CouncilPanels } from './council-panels'
-import { MessageBubble, ToolGroupBubble } from './message-bubble'
-import { StreamingBubble } from './streaming-bubble'
+import { MessageBubble } from './message-bubble'
+import { AgentTurnView } from './agent-turn'
+import { StreamingSteps } from './streaming-bubble'
 import { ChatSearch } from './chat-search'
 import { ResizeHandle } from './resize-handle'
 import {
@@ -18,7 +19,7 @@ import {
   resolveSidePanelMetrics,
 } from './chat-panel-widths'
 
-import { groupToolMessages, prepareChatMessages } from '../message-grouping'
+import { groupAgentTurns, prepareChatMessages } from '../message-grouping'
 import { NowContext } from '../utils/relative-time'
 import { FileTree, FileSearch, FilePreview } from './file-tree'
 import { ImageViewer } from './image-viewer'
@@ -123,11 +124,11 @@ export function ChatPanel(): React.JSX.Element {
     return () => window.removeEventListener('keydown', onKey)
   }, [chatVisible])
 
-  // Fold consecutive tool-call/result runs into collapsed groups. Memoized so
-  // the grouping only recomputes when the message list changes, and so lone
-  // MessageBubbles keep their stable refs (no markdown re-parse on re-render).
+  // Fold each agent turn into one header + activity timeline + answer. Memoized
+  // so the grouping only recomputes when the message list changes, and so
+  // message bodies keep their stable refs (no markdown re-parse on re-render).
   const renderItems = useMemo(
-    () => groupToolMessages(prepareChatMessages(messages), t, isStreaming),
+    () => groupAgentTurns(prepareChatMessages(messages), t, isStreaming),
     [messages, t, isStreaming]
   )
 
@@ -252,12 +253,17 @@ export function ChatPanel(): React.JSX.Element {
                           style={{ paddingBottom: composerPadPx }}
                         >
                           {renderItems.map((item) =>
-                            item.kind === 'toolGroup' ? (
-                              <ToolGroupBubble
-                                key={item.id}
-                                title={item.title}
-                                messages={item.messages}
-                                onRetry={handleRetry}
+                            item.kind === 'turn' ? (
+                              <AgentTurnView
+                                key={item.turn.id}
+                                turn={item.turn}
+                                tail={item.turn.live ? (
+                                  <StreamingSteps
+                                    content={streamingContent}
+                                    thinking={streamingThinking}
+                                    toolCalls={streamingToolCalls}
+                                  />
+                                ) : undefined}
                               />
                             ) : (
                               <MessageBubble
@@ -266,13 +272,6 @@ export function ChatPanel(): React.JSX.Element {
                                 onRetry={handleRetry}
                               />
                             )
-                          )}
-                          {isStreaming && (
-                            <StreamingBubble
-                              content={streamingContent}
-                              thinking={streamingThinking}
-                              toolCalls={streamingToolCalls}
-                            />
                           )}
                         </div>
                       </NowContext.Provider>
